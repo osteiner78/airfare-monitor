@@ -14,6 +14,7 @@ from backend.db import (
     get_latest_snapshot,
     get_previous_snapshot,
     get_price_history,
+    get_sticky_top_flight_keys,
     get_tracker,
     get_tracker_summaries,
     list_trackers,
@@ -186,15 +187,18 @@ async def _build_detail_context(tracker_id: int) -> dict:
 
     history = await get_price_history(tracker_id)
 
-    current_keys = {f["flight"]["flight_key"] for f in flights_with_delta}
+    sticky_keys = await get_sticky_top_flight_keys(tracker_id, tracker["top_n"])
     chart_datasets = {}
     for row in history:
         key = row["flight_key"]
-        if key not in current_keys:
+        if key not in sticky_keys:
             continue
         if key not in chart_datasets:
+            codes = key.split("|")[1] if "|" in key else ""
+            number = row.get("flight_number", "") or ""
+            label = f"{codes} {number}".strip()
             chart_datasets[key] = {
-                "label": f"{row.get('airline', '') or ''} {row.get('flight_number', '') or ''}".strip(),
+                "label": label,
                 "data": [],
             }
         chart_datasets[key]["data"].append({

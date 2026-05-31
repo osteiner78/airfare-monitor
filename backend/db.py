@@ -368,3 +368,32 @@ async def get_historical_best_price(tracker_id: int) -> float | None:
         ) as cur:
             row = await cur.fetchone()
     return row[0] if row and row[0] is not None else None
+
+
+async def get_sticky_top_flight_keys(tracker_id: int, top_n: int) -> set[str]:
+    db_path = get_db_path()
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT fp.flight_key, fp.price, s.id AS snapshot_id
+               FROM flight_prices fp
+               JOIN snapshots s ON fp.snapshot_id = s.id
+               WHERE fp.tracker_id = ?
+               ORDER BY s.id, fp.price ASC""",
+            (tracker_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+
+    ranked = {}
+    for row in rows:
+        sid = row["snapshot_id"]
+        if sid not in ranked:
+            ranked[sid] = []
+        ranked[sid].append(row["flight_key"])
+
+    keys: set[str] = set()
+    for flight_keys in ranked.values():
+        for key in flight_keys[:top_n]:
+            keys.add(key)
+
+    return keys
