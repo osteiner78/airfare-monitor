@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="/static/app.css">
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script>
-        document.body.addEventListener("htmx:responseError", function (evt) {
+        document.addEventListener("htmx:responseError", function (evt) {
             var banner = document.getElementById("error-banner");
             if (!banner) return;
             var msg = "Request failed";
