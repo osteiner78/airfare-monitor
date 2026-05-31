@@ -1,28 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="container">
+<div class="container detail-container">
     <a href="/" class="back-link">&larr; Back to Dashboard</a>
 
-    <div class="detail-header">
-        <h1>{{ tracker.origin }} &rarr; {{ tracker.destination }}</h1>
-        <span class="date"><span class="label">Flight date:</span> {{ tracker.depart_date }}</span>
-        <div class="detail-controls">
-            <span class="badge {% if tracker.active %}active{% else %}paused{% endif %}">
-                {{ "Active" if tracker.active else "Paused" }}
-            </span>
-            <button hx-patch="/trackers/{{ tracker.id }}/toggle-detail"
-                    hx-target="#detail-content"
-                    hx-swap="outerHTML">
-                {{ "Pause" if tracker.active else "Resume" }}
-            </button>
-            <button class="danger"
-                    hx-delete="/trackers/{{ tracker.id }}/detail"
-                    hx-confirm="Delete this tracker?">
-                Delete
-            </button>
-        </div>
-    </div>
-
-    {% include "partials/detail_content.html" %}
+    {% include "partials/detail_page.html" %}
 </div>
 {% endblock %}

@@ -76,12 +76,13 @@ class GoogleFlightsSource:
         if not raw_results:
             return []
 
-        return [self._map_result(r) for r in raw_results]
+        return [self._map_result(r, origin, dest, depart_date) for r in raw_results if r.price is not None]
 
-    def _map_result(self, r) -> FlightResult:
+    def _map_result(self, r, origin: str, dest: str, depart_date: str) -> FlightResult:
         legs = r.legs if r.legs else []
 
-        airlines = "+".join(leg.airline.name for leg in legs) if legs else ""
+        airline_name = getattr(r, "primary_airline_name", None) or ""
+        airline_codes = "+".join(leg.airline.name for leg in legs) if legs else ""
         flight_numbers = "+".join(str(leg.flight_number) for leg in legs) if legs else ""
         departure_time = legs[0].departure_datetime.isoformat() if legs else ""
         arrival_time = legs[-1].arrival_datetime.isoformat() if legs else ""
@@ -89,6 +90,7 @@ class GoogleFlightsSource:
         legs_data = [
             {
                 "airline": leg.airline.name,
+                "airline_name": airline_name,
                 "flight_number": str(leg.flight_number),
                 "departure": leg.departure_datetime.isoformat(),
                 "arrival": leg.arrival_datetime.isoformat(),
@@ -103,10 +105,10 @@ class GoogleFlightsSource:
             currency=str(r.currency),
             duration_min=r.duration,
             stops=r.stops,
-            airline=airlines,
+            airline=airline_name,
             flight_number=flight_numbers,
             departure_time=departure_time,
             arrival_time=arrival_time,
             legs_json=json.dumps(legs_data),
-            booking_url="",
+            booking_url=f"https://www.google.com/travel/flights?q=Flights+to+{dest}+from+{origin}+on+{depart_date}",
         )

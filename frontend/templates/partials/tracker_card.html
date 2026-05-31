@@ -5,9 +5,6 @@
      hx-swap="innerHTML">
     <div class="card-header">
         <span class="route">{{ tracker.origin }} &rarr; {{ tracker.destination }}</span>
-        <span class="date"><span class="label">Flight date:</span> {{ tracker.depart_date }}</span>
-    </div>
-    <div class="card-body">
         <span class="best-price">
             {% if tracker.best_price is not none %}
                 {{ "%.2f"|format(tracker.best_price) }} {{ tracker.currency }}
@@ -15,6 +12,9 @@
                 &mdash;
             {% endif %}
         </span>
+    </div>
+    <div class="card-body">
+        <span class="date"><span class="label">Flight date:</span> {{ tracker.depart_date }}</span>
         <span class="badge {% if tracker.active %}active{% else %}paused{% endif %}">
             {{ "Active" if tracker.active else "Paused" }}
         </span>

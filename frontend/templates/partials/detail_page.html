@@ -1,0 +1,53 @@
+<div id="detail-content">
+    <div class="detail-header">
+        <h1>{{ tracker.origin }} &rarr; {{ tracker.destination }}</h1>
+        <span class="date"><span class="label">Flight date:</span> {{ tracker.depart_date }}</span>
+        <div class="detail-controls">
+            <span class="badge {% if tracker.active %}active{% else %}paused{% endif %}">
+                {{ "Active" if tracker.active else "Paused" }}
+            </span>
+            <button hx-post="/trackers/{{ tracker.id }}/search"
+                    hx-target="#detail-content"
+                    hx-swap="outerHTML"
+                    hx-indicator="#search-spinner">
+                Search Now
+            </button>
+            <button hx-patch="/trackers/{{ tracker.id }}/toggle-detail"
+                    hx-target="#detail-content"
+                    hx-swap="outerHTML">
+                {{ "Pause" if tracker.active else "Resume" }}
+            </button>
+            <button class="danger"
+                    hx-delete="/trackers/{{ tracker.id }}/detail"
+                    hx-confirm="Delete this tracker?">
+                Delete
+            </button>
+        </div>
+        <span id="search-spinner" class="htmx-indicator">Searching...</span>
+    </div>
+
+    {% if latest_snapshot %}
+    <div class="chart-section">
+        <h2>Price History</h2>
+        <div class="chart-container">
+            <canvas id="price-chart"></canvas>
+        </div>
+    </div>
+
+    <div class="results-section">
+        <div class="results-header">
+            <h2>Current Results</h2>
+        </div>
+        {% include "partials/results_table.html" %}
+    </div>
+    {% else %}
+    <div class="empty-state" style="padding: 2rem 0;">
+        <p>No snapshots yet. Click "Search Now" to fetch flight data.</p>
+    </div>
+    {% endif %}
+</div>
+
+<script>window.chartData = {{ chart_datasets | safe }};</script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
+<script src="/static/charts.js"></script>

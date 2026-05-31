@@ -1,10 +1,12 @@
 <table class="results-table">
     <thead>
         <tr>
+            <th>Airline</th>
             <th>Flight</th>
-            <th>Date</th>
-            <th>Departure</th>
-            <th>Arrival</th>
+            <th>Dep Date</th>
+            <th>Dep Time</th>
+            <th>Arr Date</th>
+            <th>Arr Time</th>
             <th>Duration</th>
             <th>Stops</th>
             <th>Price</th>
@@ -15,9 +17,11 @@
     <tbody>
         {% for item in flights_with_delta %}
         <tr>
-            <td>{{ item.flight.airline or "—" }} {{ item.flight.flight_number or "—" }}</td>
+            <td>{{ item.flight.airline or "—" }}</td>
+            <td>{{ item.flight.flight_number or "—" }}</td>
             <td>{{ item.flight.get("departure_time_date", item.flight.get("departure_time", "—")) }}</td>
             <td>{{ item.flight.get("departure_time_time", "—") }}</td>
+            <td>{{ item.flight.get("arrival_time_date", "—") }}</td>
             <td>{{ item.flight.get("arrival_time_time", "—") }}</td>
             <td>{% if item.flight.duration_min is not none %}{{ item.flight.duration_min }}m{% else %}—{% endif %}</td>
             <td>{{ item.flight.stops }}</td>

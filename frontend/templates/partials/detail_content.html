@@ -10,28 +10,12 @@
     <div class="results-section">
         <div class="results-header">
             <h2>Current Results</h2>
-                <button class="search-now-btn"
-                        hx-post="/trackers/{{ tracker.id }}/search"
-                        hx-target="#detail-content"
-                        hx-swap="outerHTML"
-                        hx-indicator="#search-spinner">
-                    Search Now
-                </button>
-            <span id="search-spinner" class="htmx-indicator">Searching...</span>
         </div>
         {% include "partials/results_table.html" %}
     </div>
     {% else %}
     <div class="empty-state" style="padding: 2rem 0;">
         <p>No snapshots yet. Click "Search Now" to fetch flight data.</p>
-        <button class="search-now-btn"
-                hx-post="/trackers/{{ tracker.id }}/search"
-                hx-target="#detail-content"
-                hx-swap="innerHTML"
-                hx-indicator="#search-spinner">
-            Search Now
-        </button>
-        <span id="search-spinner" class="htmx-indicator">Searching...</span>
     </div>
     {% endif %}
 </div>

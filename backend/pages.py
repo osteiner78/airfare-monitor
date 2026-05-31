@@ -59,8 +59,8 @@ async def dashboard(request: Request):
 async def add_tracker(request: Request):
     form = await request.form()
     tracker = await create_tracker(
-        origin=form["origin"],
-        destination=form["destination"],
+        origin=form["origin"].upper().strip(),
+        destination=form["destination"].upper().strip(),
         depart_date=form["depart_date"],
         return_date=form.get("return_date") or None,
     )
@@ -130,12 +130,15 @@ async def _build_detail_context(tracker_id: int) -> dict:
         for key in ("departure_time", "arrival_time"):
             val = f.get(key)
             if val and "T" in str(val):
-                date_part, time_part = str(val).split("T", 1)
-                time_part = time_part.split("+")[0].split("-")[0].split("Z")[0]
+                date_part, time_with_tz = str(val).split("T", 1)
+                tz_suffix = ""
+                if "+" in time_with_tz:
+                    tz_suffix = " +" + time_with_tz.split("+", 1)[1].split(":", 1)[0] + ":" + time_with_tz.split("+", 1)[1].split(":", 2)[1][:2]
+                time_part = time_with_tz.split("+")[0].split("-")[0].split("Z")[0]
                 if len(time_part) >= 5:
                     time_part = time_part[:5]
                 f[key + "_date"] = date_part
-                f[key + "_time"] = time_part
+                f[key + "_time"] = time_part + tz_suffix
 
     history = await get_price_history(tracker_id)
 
@@ -148,7 +151,7 @@ async def _build_detail_context(tracker_id: int) -> dict:
                 "data": [],
             }
         chart_datasets[key]["data"].append({
-            "x": row["searched_at"],
+            "x": row["searched_at"].replace(" ", "T"),
             "y": row["price"],
         })
 
@@ -200,7 +203,7 @@ async def toggle_tracker_detail(request: Request, tracker_id: int):
 
     ctx = await _build_detail_context(tracker_id)
     ctx["request"] = request
-    return _render("partials/detail_content.html", ctx)
+    return _render("partials/detail_page.html", ctx)
 
 
 @router.delete("/trackers/{tracker_id}/detail", response_class=HTMLResponse)
