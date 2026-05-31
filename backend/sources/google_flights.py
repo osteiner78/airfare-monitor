@@ -86,6 +86,7 @@ class GoogleFlightsSource:
         flight_numbers = "+".join(str(leg.flight_number) for leg in legs) if legs else ""
         departure_time = legs[0].departure_datetime.isoformat() if legs else ""
         arrival_time = legs[-1].arrival_datetime.isoformat() if legs else ""
+        currency = str(r.currency)
 
         legs_data = [
             {
@@ -102,7 +103,7 @@ class GoogleFlightsSource:
         return FlightResult(
             source="google_flights",
             price=float(r.price),
-            currency=str(r.currency),
+            currency=currency,
             duration_min=r.duration,
             stops=r.stops,
             airline=airline_name,
@@ -110,5 +111,5 @@ class GoogleFlightsSource:
             departure_time=departure_time,
             arrival_time=arrival_time,
             legs_json=json.dumps(legs_data),
-            booking_url=f"https://www.google.com/travel/flights?q=Flights+to+{dest}+from+{origin}+on+{depart_date}",
+            booking_url=f"https://www.google.com/travel/flights?q=Flights+to+{dest}+from+{origin}+on+{depart_date}&curr={currency}&tt=o",
         )

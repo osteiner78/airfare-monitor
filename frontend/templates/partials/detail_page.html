@@ -9,7 +9,7 @@
             <span class="detail-historical"> / All-time best: {{ "%.2f"|format(historical_best_price) }} {{ tracker.currency }}</span>
             {% endif %}
         </div>
-        <span class="date"><span class="label">Flight date:</span> {{ tracker.depart_date }}</span>
+        <span class="date">{{ tracker.depart_date | format_date }}</span>
         <div class="detail-controls">
             <span class="badge {% if tracker.active %}active{% else %}paused{% endif %}">
                 {{ "Active" if tracker.active else "Paused" }}
@@ -20,6 +20,9 @@
                     hx-indicator="#search-spinner">
                 Search Now
             </button>
+            <a href="https://www.google.com/travel/flights?q=Flights+to+{{ tracker.destination }}+from+{{ tracker.origin }}+on+{{ tracker.depart_date }}&curr={{ tracker.currency }}&tt=o"
+               target="_blank"
+               class="gf-link">Google Flights</a>
             <button hx-patch="/trackers/{{ tracker.id }}/toggle-detail"
                     hx-target="#detail-content"
                     hx-swap="outerHTML">

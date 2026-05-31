@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 
 import backend.scheduler
 from fastapi import APIRouter, HTTPException, Request
@@ -31,6 +32,20 @@ router = APIRouter()
 def _render(name: str, context: dict) -> HTMLResponse:
     template = _env.get_template(name)
     return HTMLResponse(template.render(context))
+
+
+def _format_date(date_str: str) -> str:
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        now = datetime.now()
+        if dt.year == now.year:
+            return dt.strftime("%b %-d")
+        return dt.strftime("%b %-d, %Y")
+    except (ValueError, TypeError):
+        return date_str
+
+
+_env.filters["format_date"] = _format_date
 
 
 def _enrich_summaries(summaries: list) -> list:

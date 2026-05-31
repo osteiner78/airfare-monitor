@@ -11,7 +11,6 @@
             <th>Stops</th>
             <th>Price</th>
             <th>Change</th>
-            <th>Link</th>
         </tr>
     </thead>
     <tbody>
@@ -27,13 +26,6 @@
             <td>{{ item.flight.stops }}</td>
             <td class="price-cell">{{ "%.2f"|format(item.flight.price) }} {{ item.flight.currency }}</td>
             <td>{% include "partials/price_badge.html" %}</td>
-            <td>
-                {% if item.flight.booking_url %}
-                <a href="{{ item.flight.booking_url }}" target="_blank" class="book-link">Book</a>
-                {% else %}
-                —
-                {% endif %}
-            </td>
         </tr>
         {% endfor %}
     </tbody>

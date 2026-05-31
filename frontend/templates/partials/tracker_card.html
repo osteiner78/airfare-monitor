@@ -15,7 +15,7 @@
             </span>
         </div>
         <div class="card-body">
-            <span class="date">{{ tracker.depart_date }}</span>
+            <span class="date">{{ tracker.depart_date | format_date }}</span>
             <span class="badge {% if tracker.active %}active{% else %}paused{% endif %}">
                 {{ "Active" if tracker.active else "Paused" }}
             </span>
