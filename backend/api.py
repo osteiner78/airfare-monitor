@@ -3,14 +3,24 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
 from backend.db import (
+    create_notification,
     create_tracker,
+    delete_notification,
     delete_tracker,
+    get_notification,
     get_price_history,
     get_tracker,
     get_tracker_summaries,
+    list_notifications,
     update_tracker,
 )
-from backend.models import TrackerCreate, TrackerResponse, TrackerUpdate
+from backend.models import (
+    NotificationCreate,
+    NotificationResponse,
+    TrackerCreate,
+    TrackerResponse,
+    TrackerUpdate,
+)
 
 router = APIRouter(prefix="/api")
 
@@ -79,3 +89,33 @@ async def search_now_endpoint(tracker_id: int):
         raise HTTPException(status_code=404, detail="Tracker not found")
     await backend.scheduler.search_and_store(tracker_id)
     return {"status": "ok"}
+
+
+@router.post("/notifications", status_code=201)
+async def create_notification_endpoint(payload: NotificationCreate) -> NotificationResponse:
+    tracker = await get_tracker(payload.tracker_id)
+    if tracker is None:
+        raise HTTPException(status_code=404, detail="Tracker not found")
+    notification = await create_notification(
+        tracker_id=payload.tracker_id,
+        rule_type=payload.rule_type,
+        threshold=payload.threshold,
+    )
+    return NotificationResponse(**notification)
+
+
+@router.get("/trackers/{tracker_id}/notifications")
+async def list_notifications_endpoint(tracker_id: int):
+    tracker = await get_tracker(tracker_id)
+    if tracker is None:
+        raise HTTPException(status_code=404, detail="Tracker not found")
+    return await list_notifications(tracker_id)
+
+
+@router.delete("/notifications/{notification_id}", status_code=204)
+async def delete_notification_endpoint(notification_id: int):
+    notification = await get_notification(notification_id)
+    if notification is None:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    await delete_notification(notification_id)
+    return Response(status_code=204)

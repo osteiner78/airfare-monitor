@@ -45,3 +45,17 @@ class TrackerResponse(BaseModel):
     top_n: int
     active: bool
     created_at: str
+
+
+class NotificationCreate(BaseModel):
+    tracker_id: int
+    rule_type: str
+    threshold: float
+
+
+class NotificationResponse(BaseModel):
+    id: int
+    tracker_id: int
+    rule_type: str
+    threshold: float
+    created_at: str

@@ -309,3 +309,12 @@ async def delete_notification(notification_id: int) -> None:
     async with aiosqlite.connect(db_path) as db:
         await db.execute("DELETE FROM notifications WHERE id = ?", (notification_id,))
         await db.commit()
+
+
+async def get_notification(notification_id: int) -> dict | None:
+    db_path = get_db_path()
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM notifications WHERE id = ?", (notification_id,)) as cur:
+            row = await cur.fetchone()
+    return _row_to_dict(row) if row else None

@@ -6,8 +6,23 @@
     <title>Airfare Monitor</title>
     <link rel="stylesheet" href="/static/app.css">
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script>
+        document.body.addEventListener("htmx:responseError", function (evt) {
+            var banner = document.getElementById("error-banner");
+            if (!banner) return;
+            var msg = "Request failed";
+            try {
+                var body = JSON.parse(evt.detail.xhr.responseText);
+                msg = body.detail || msg;
+            } catch (_) {}
+            banner.textContent = msg;
+            banner.classList.add("visible");
+            setTimeout(function () { banner.classList.remove("visible"); }, 5000);
+        });
+    </script>
 </head>
 <body>
+    <div id="error-banner" class="error-banner"></div>
     {% block content %}{% endblock %}
 </body>
 </html>

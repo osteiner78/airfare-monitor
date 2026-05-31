@@ -52,6 +52,19 @@ async def search_and_store(tracker_id: int) -> None:
         ]
         await insert_flight_prices(snapshot["id"], tracker_id, prices)
 
+        await _evaluate_notifications(tracker_id, min(r.price for r in results))
+
+
+async def _evaluate_notifications(tracker_id: int, best_price: float) -> None:
+    from backend.db import list_notifications
+
+    rules = await list_notifications(tracker_id)
+    for rule in rules:
+        if rule["rule_type"] == "price_below" and best_price > rule["threshold"]:
+            continue
+        if rule["rule_type"] == "price_above" and best_price < rule["threshold"]:
+            continue
+
 
 def add_tracker_job(tracker_id: int, interval_minutes: int) -> None:
     if scheduler is None:
