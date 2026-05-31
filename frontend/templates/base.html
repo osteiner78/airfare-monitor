@@ -7,6 +7,9 @@
     <link rel="stylesheet" href="/static/app.css">
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script>
+        htmx.config.allowScriptTags = true;
+    </script>
+    <script>
         document.addEventListener("htmx:responseError", function (evt) {
             var banner = document.getElementById("error-banner");
             if (!banner) return;
