@@ -79,7 +79,16 @@ async def get_history_endpoint(tracker_id: int):
     if tracker is None:
         raise HTTPException(status_code=404, detail="Tracker not found")
     history = await get_price_history(tracker_id)
-    return {"flights": history, "best_prices": []}
+
+    best_by_time = {}
+    for row in history:
+        t = row["searched_at"]
+        p = row["price"]
+        if t not in best_by_time or p < best_by_time[t]:
+            best_by_time[t] = p
+
+    best_prices = [{"x": t, "y": p} for t, p in sorted(best_by_time.items())]
+    return {"flights": history, "best_prices": best_prices}
 
 
 @router.post("/trackers/{tracker_id}/search")

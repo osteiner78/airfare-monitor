@@ -7,5 +7,7 @@
     <span class="price-badge same">{{ "%.2f"|format(item.flight.price) }} {{ item.flight.currency }}</span>
     {% elif item.delta.type == "new" %}
     <span class="price-badge new">new</span>
+    {% elif item.delta.type == "missing" %}
+    <span class="price-badge missing">?</span>
     {% endif %}
 {% endif %}

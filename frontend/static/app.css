@@ -478,6 +478,19 @@ h1 {
     color: #6c757d;
 }
 
+.price-badge.missing {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.row-missing {
+    opacity: 0.6;
+}
+
+.row-missing td {
+    text-decoration: line-through;
+}
+
 .card-delta.same {
     color: #6c757d;
 }

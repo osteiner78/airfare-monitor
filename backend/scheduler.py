@@ -27,8 +27,8 @@ async def search_and_store(tracker_id: int) -> None:
                 tracker["top_n"],
             )
             results.extend(found)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[search_and_store] tracker {tracker_id}: {e}")
 
     snapshot = await create_snapshot(tracker_id, results_count=len(results))
 

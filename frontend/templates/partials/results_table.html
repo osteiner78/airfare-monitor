@@ -15,7 +15,7 @@
     </thead>
     <tbody>
         {% for item in flights_with_delta %}
-        <tr>
+        <tr class="{% if item.delta and item.delta.type == 'missing' %}row-missing{% endif %}">
             <td>{{ item.flight.airline or "—" }}</td>
             <td>{{ item.flight.flight_number or "—" }}</td>
             <td>{{ item.flight.get("departure_time_date", item.flight.get("departure_time", "—")) }}</td>
