@@ -196,9 +196,7 @@ async def _build_detail_context(tracker_id: int) -> dict:
         if key not in latest_top_keys:
             continue
         if key not in chart_datasets:
-            codes = key.split("|")[1] if "|" in key else ""
-            number = row.get("flight_number", "") or ""
-            label = f"{codes} {number}".strip()
+            label = (row.get("flight_number") or "").strip() or row.get("airline", "") or key
             chart_datasets[key] = {
                 "label": label,
                 "data": [],
