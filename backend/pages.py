@@ -41,6 +41,8 @@ def _enrich_summaries(summaries: list) -> list:
                 delta = {"type": "down", "amount": round(prev - best, 2)}
             elif best > prev:
                 delta = {"type": "up", "amount": round(best - prev, 2)}
+            else:
+                delta = {"type": "same"}
         s["price_delta"] = delta
     return summaries
 
@@ -116,6 +118,8 @@ async def _build_detail_context(tracker_id: int) -> dict:
                 delta = {"type": "down", "amount": round(prev_price - flight["price"], 2)}
             elif flight["price"] > prev_price:
                 delta = {"type": "up", "amount": round(flight["price"] - prev_price, 2)}
+            else:
+                delta = {"type": "same"}
         else:
             delta = {"type": "new"}
         flights_with_delta.append({"flight": flight, "delta": delta})
