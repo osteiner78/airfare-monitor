@@ -1,26 +1,28 @@
-<div class="tracker-card" id="card-{{ tracker.id }}"
-     hx-get="/trackers/{{ tracker.id }}"
-     hx-push-url="true"
-     hx-target="body"
-     hx-swap="innerHTML">
-    <div class="card-header">
-        <span class="route">{{ tracker.origin }} &rarr; {{ tracker.destination }}</span>
-        <span class="best-price">
-            {% if tracker.best_price is not none %}
-                {{ "%.2f"|format(tracker.best_price) }} {{ tracker.currency }}
-            {% else %}
-                &mdash;
+<div class="tracker-card" id="card-{{ tracker.id }}">
+    <div class="card-clickable"
+         hx-get="/trackers/{{ tracker.id }}"
+         hx-push-url="true"
+         hx-target="body"
+         hx-swap="innerHTML">
+        <div class="card-header">
+            <span class="route">{{ tracker.origin }} &rarr; {{ tracker.destination }}</span>
+            <span class="best-price">
+                {% if tracker.best_price is not none %}
+                    {{ "%.2f"|format(tracker.best_price) }} {{ tracker.currency }}
+                {% else %}
+                    &mdash;
+                {% endif %}
+            </span>
+        </div>
+        <div class="card-body">
+            <span class="date">{{ tracker.depart_date }}</span>
+            <span class="badge {% if tracker.active %}active{% else %}paused{% endif %}">
+                {{ "Active" if tracker.active else "Paused" }}
+            </span>
+            {% if tracker.recent_alerts and tracker.recent_alerts > 0 %}
+            <span class="badge alert-count">{{ tracker.recent_alerts }}</span>
             {% endif %}
-        </span>
-    </div>
-    <div class="card-body">
-        <span class="date"><span class="label">Flight date:</span> {{ tracker.depart_date }}</span>
-        <span class="badge {% if tracker.active %}active{% else %}paused{% endif %}">
-            {{ "Active" if tracker.active else "Paused" }}
-        </span>
-        {% if tracker.recent_alerts and tracker.recent_alerts > 0 %}
-        <span class="badge alert-count">{{ tracker.recent_alerts }}</span>
-        {% endif %}
+        </div>
     </div>
     <div class="card-footer">
         <div class="card-left">
@@ -40,7 +42,7 @@
                 {% endif %}
             </span>
         </div>
-        <div class="card-actions" hx-get="" hx-target="" hx-swap="">
+        <div class="card-actions">
             <button hx-patch="/trackers/{{ tracker.id }}/toggle"
                     hx-target="#card-{{ tracker.id }}"
                     hx-swap="outerHTML">
