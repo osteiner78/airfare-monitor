@@ -14,6 +14,7 @@ from backend.db import (
     get_price_history,
     get_tracker,
     get_tracker_summaries,
+    list_trackers,
     update_tracker,
 )
 
@@ -210,3 +211,14 @@ async def delete_tracker_detail(request: Request, tracker_id: int):
     response = HTMLResponse("")
     response.headers["HX-Redirect"] = "/"
     return response
+
+
+@router.post("/refresh-all", response_class=HTMLResponse)
+async def refresh_all(request: Request):
+    trackers = await list_trackers()
+    for tracker in trackers:
+        if tracker["active"]:
+            await backend.scheduler.search_and_store(tracker["id"])
+
+    summaries = _enrich_summaries(await get_tracker_summaries())
+    return _render("dashboard.html", {"request": request, "trackers": summaries})

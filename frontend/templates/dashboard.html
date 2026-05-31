@@ -2,6 +2,16 @@
 {% block content %}
 <div class="container">
     <h1>Airfare Monitor</h1>
+    <div class="dashboard-controls">
+        <button class="refresh-all-btn"
+                hx-post="/refresh-all"
+                hx-target="body"
+                hx-swap="innerHTML"
+                hx-indicator="#refresh-spinner">
+            Refresh All
+        </button>
+        <span id="refresh-spinner" class="htmx-indicator">Refreshing...</span>
+    </div>
     {% include "partials/add_form.html" %}
     <div id="tracker-list">
         {% include "partials/tracker_list.html" %}
