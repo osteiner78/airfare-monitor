@@ -1,6 +1,14 @@
 <div id="detail-content">
     <div class="detail-header">
         <h1>{{ tracker.origin }} &rarr; {{ tracker.destination }}</h1>
+        <div class="detail-prices">
+            {% if best_price is not none %}
+            <span class="detail-best">Best now: {{ "%.2f"|format(best_price) }} {{ tracker.currency }}</span>
+            {% endif %}
+            {% if historical_best_price is not none %}
+            <span class="detail-historical"> / All-time best: {{ "%.2f"|format(historical_best_price) }} {{ tracker.currency }}</span>
+            {% endif %}
+        </div>
         <span class="date"><span class="label">Flight date:</span> {{ tracker.depart_date }}</span>
         <div class="detail-controls">
             <span class="badge {% if tracker.active %}active{% else %}paused{% endif %}">

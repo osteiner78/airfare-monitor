@@ -9,6 +9,7 @@ from backend.db import (
     create_tracker,
     delete_tracker,
     get_flight_prices_for_snapshot,
+    get_historical_best_price,
     get_latest_snapshot,
     get_previous_snapshot,
     get_price_history,
@@ -155,11 +156,16 @@ async def _build_detail_context(tracker_id: int) -> dict:
             "y": row["price"],
         })
 
+    best_price = min((f["flight"]["price"] for f in flights_with_delta), default=None)
+    historical_best_price = await get_historical_best_price(tracker_id)
+
     return {
         "tracker": tracker,
         "latest_snapshot": latest,
         "flights_with_delta": flights_with_delta,
         "chart_datasets": json.dumps(list(chart_datasets.values())),
+        "best_price": best_price,
+        "historical_best_price": historical_best_price,
     }
 
 

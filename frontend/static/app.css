@@ -298,6 +298,20 @@ h1 {
     margin-bottom: 0.25rem;
 }
 
+.detail-prices {
+    font-size: 0.875rem;
+    margin-bottom: 0.35rem;
+}
+
+.detail-best {
+    color: #2a7d4f;
+    font-weight: 600;
+}
+
+.detail-historical {
+    color: #888;
+}
+
 .detail-header .date {
     display: inline-block;
     font-size: 0.875rem;

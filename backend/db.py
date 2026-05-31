@@ -357,3 +357,14 @@ async def get_recent_alerts_count(tracker_id: int) -> int:
         ) as cur:
             row = await cur.fetchone()
     return row[0] if row else 0
+
+
+async def get_historical_best_price(tracker_id: int) -> float | None:
+    db_path = get_db_path()
+    async with aiosqlite.connect(db_path) as db:
+        async with db.execute(
+            "SELECT MIN(price) FROM flight_prices WHERE tracker_id = ?",
+            (tracker_id,),
+        ) as cur:
+            row = await cur.fetchone()
+    return row[0] if row and row[0] is not None else None
