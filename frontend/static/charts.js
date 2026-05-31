@@ -5,7 +5,13 @@
     var existing = Chart.getChart(canvas);
     if (existing) existing.destroy();
 
-    if (!window.chartData || !window.chartData.length) return;
+    if (!window.chartData || !window.chartData.length) {
+        var noData = document.createElement("p");
+        noData.textContent = "No price data yet";
+        noData.style.cssText = "text-align:center;color:#888;padding:2rem 0";
+        canvas.parentNode.appendChild(noData);
+        return;
+    }
 
     var ctx = canvas.getContext("2d");
 
@@ -15,6 +21,11 @@
     ];
 
     window.chartData.forEach(function (ds, i) {
+        ds.data.forEach(function (point) {
+            if (!point.x || point.x.indexOf("T") === -1) return;
+            var parsed = new Date(point.x);
+            if (!isNaN(parsed.getTime())) point.x = parsed;
+        });
         ds.borderColor = colors[i % colors.length];
         ds.backgroundColor = colors[i % colors.length] + "20";
         ds.tension = 0.1;
