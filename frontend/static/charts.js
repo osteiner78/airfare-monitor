@@ -22,9 +22,7 @@
 
     window.chartData.forEach(function (ds, i) {
         ds.data.forEach(function (point) {
-            if (!point.x || point.x.indexOf("T") === -1) return;
-            var parsed = new Date(point.x);
-            if (!isNaN(parsed.getTime())) point.x = parsed;
+            point.x = new Date(point.x).getTime();
         });
         ds.borderColor = colors[i % colors.length];
         ds.backgroundColor = colors[i % colors.length] + "20";
@@ -44,11 +42,15 @@
             animation: false,
             scales: {
                 x: {
-                    type: "time",
-                    time: {
-                        unit: "hour",
-                        displayFormats: {
-                            hour: "MMM d HH:mm",
+                    type: "linear",
+                    ticks: {
+                        callback: function (val) {
+                            var d = new Date(val);
+                            var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                          "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                            return months[d.getMonth()] + " " + d.getDate() + " " +
+                                   String(d.getHours()).padStart(2, "0") + ":" +
+                                   String(d.getMinutes()).padStart(2, "0");
                         },
                     },
                 },
