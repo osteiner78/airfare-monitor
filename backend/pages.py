@@ -80,6 +80,7 @@ async def add_tracker(request: Request):
         destination=form["destination"].upper().strip(),
         depart_date=form["depart_date"],
         return_date=form.get("return_date") or None,
+        top_n=5,
     )
     backend.scheduler.add_tracker_job(tracker["id"], tracker["interval_minutes"])
 
