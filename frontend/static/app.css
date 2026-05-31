@@ -481,11 +481,8 @@ h1 {
     color: #6c757d;
 }
 
-.book-link {
-    color: #4a90d9;
-    text-decoration: none;
-    font-weight: 600;
-    font-size: 0.8125rem;
+.gf-link:hover {
+    background: #eef5fc;
 }
 
 .book-link:hover {
