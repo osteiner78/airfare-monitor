@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+    <h1>Airfare Monitor</h1>
+    {% include "partials/add_form.html" %}
+    <div id="tracker-list">
+        {% if trackers %}
+            {% for tracker in trackers %}
+                {% include "partials/tracker_card.html" %}
+            {% endfor %}
+        {% else %}
+            <p class="empty-state">No trackers yet</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

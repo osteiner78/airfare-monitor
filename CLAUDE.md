@@ -11,11 +11,32 @@
 ## Project structure
 
 ```
-airfare-tracker/
-├── backend/         # All Python code (API, DB, scheduler, sources)
-├── frontend/        # Templates + static assets
+airfare-monitor/
+├── backend/
+│   ├── main.py              # FastAPI app, lifespan, static mount
+│   ├── db.py                # aiosqlite schema + CRUD
+│   ├── models.py            # Pydantic schemas
+│   ├── api.py               # JSON API router (/api/*)
+│   ├── pages.py             # HTML page router (/, /trackers/{id})
+│   ├── scheduler.py         # APScheduler job management
+│   ├── fingerprint.py       # flight_key generation
+│   └── sources/
+├── frontend/
+│   ├── templates/
+│   │   ├── base.html
+│   │   ├── dashboard.html
+│   │   ├── tracker.html              # Phase 5
+│   │   └── partials/
+│   │       ├── add_form.html
+│   │       ├── tracker_card.html
+│   │       ├── results_table.html     # Phase 5
+│   │       └── price_badge.html       # Phase 5
+│   └── static/
+│       ├── app.css
+│       └── charts.js                  # Phase 5
 ├── data/            # SQLite DB (auto-created, gitignored)
-├── .agent/          # Plans, decisions, reports
+├── tests/
+├── .agent/
 ├── requirements.txt
 └── pyproject.toml
 ```
@@ -32,7 +53,8 @@ Install: `pip install -r requirements.txt`
 
 ```bash
 uvicorn backend.main:app --reload
-# Opens at http://localhost:8000
+# Dashboard at http://localhost:8000
+# JSON API at http://localhost:8000/api/trackers
 ```
 
 ## Coding conventions
@@ -56,26 +78,37 @@ uvicorn backend.main:app --reload
 
 ## Verification requirements
 
-**Do not mark a phase complete until all its success criteria pass.**
+**A phase is complete only when its tests pass AND the full verification output is pasted into `.agent/reports/001-phase-N.md`.**
 
-After each PR/commit, run the relevant verification:
+Per-phase test commands are in the plan (`.agent/plans/001-airfare-tracker.md`). Quick reference:
 
+```bash
+# Phase 1
+pytest tests/test_db.py -v
+
+# Phase 2
+pytest tests/test_fingerprint.py tests/test_sources.py -v -k "not slow"
+
+# Phase 3
+pytest tests/test_api.py -v
+
+# Phase 6
+pytest tests/test_notifications.py -v
+
+# Full suite (any phase)
+pytest tests/ -v -k "not slow"
 ```
-# Phase 1: DB schema
-python -c "from backend.db import init_db; import asyncio; asyncio.run(init_db('data/test.db'))"
 
-# Phase 2: Flight search (requires network)
-python -c "from backend.sources.google_flights import GoogleFlightsSource; import asyncio; r = asyncio.run(GoogleFlightsSource().search('GVA','BCN','2026-06-15',None,'EUR',5)); print(len(r), 'results')"
+## Test ownership
 
-# Phase 3: Server starts, API responds
-uvicorn backend.main:app &  # start in background
-sleep 2
-curl -s http://localhost:8000/api/trackers | python -c "import sys,json; print('API ok:', json.load(sys.stdin))"
-kill %1 2>/dev/null
+Tests in `tests/` are written by the orchestrator before implementation. The implementing agent:
+- Must **not** weaken or delete an orchestrator-written test to make it pass.
+- May add new tests; must not modify existing ones.
+- If a test seems wrong, flag it — do not silently change it.
 
-# Phase 4-5: Full flow
-# Manual smoke test in browser
-```
+## DB path convention
+
+All DB functions read from `os.environ["AIRFARE_DB_PATH"]` with fallback `"data/airfare.db"`. Tests inject a temp path via `monkeypatch.setenv("AIRFARE_DB_PATH", ...)` in `tests/conftest.py`.
 
 ## Destructive actions — confirm first
 
@@ -97,3 +130,5 @@ Ask before:
 - The `backend/sources/` directory is designed for pluggable sources. To add Amadeus: create `amadeus.py` implementing `SearchSource`, add to `__init__.py`, done.
 - Notification delivery (email, push) is explicitly v2. The DB table and evaluation logic exist in v1 but no transport is wired.
 - If the `fli` library breaks due to Google page changes, the fix is isolated to `backend/sources/google_flights.py`.
+- **Template rendering bypass**: Python 3.13 + Jinja2 3.1.6 has a bug where Starlette's `Jinja2Templates.TemplateResponse` triggers `TypeError: unhashable type: 'dict'` in Jinja2's LRUCache when `env.globals` is non-empty. `backend/pages.py` works around this by using `jinja2.Environment(cache_size=0)` directly with `get_template()` + `render()` + `HTMLResponse()`. If upgrading Python/Jinja2/Starlette, try restoring `Jinja2Templates` — but verify with a quick smoke test first.
+- **Router separation**: `backend/api.py` handles JSON API under `/api/*`, `backend/pages.py` handles HTML pages at `/*`. Both are included in `main.py`. The pages router also has HTMX-specific routes (toggle, form submit) that return HTML partials.

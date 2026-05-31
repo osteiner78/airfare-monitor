@@ -4,8 +4,11 @@ import backend.scheduler
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, Request
 
-from backend.api import router
+from fastapi.staticfiles import StaticFiles
+
+from backend.api import router as api_router
 from backend.db import get_db_path, init_db, list_trackers
+from backend.pages import router as pages_router
 
 _initialized_paths: set[str] = set()
 
@@ -37,7 +40,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
-app.include_router(router)
+app.include_router(pages_router)
+app.include_router(api_router)
+app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
 
 
 @app.middleware("http")

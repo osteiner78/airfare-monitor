@@ -1,0 +1,14 @@
+<div class="add-form">
+    <h2>Add Route</h2>
+    <form hx-post="/"
+          hx-target="#tracker-list"
+          hx-swap="innerHTML"
+          hx-on::after-request="if(event.detail.successful) { this.reset(); } else { alert('Failed to add tracker'); }">
+        <div class="form-row">
+            <input type="text" name="origin" placeholder="Origin (e.g. GVA)" required>
+            <input type="text" name="destination" placeholder="Destination (e.g. BCN)" required>
+            <input type="date" name="depart_date" required>
+            <button type="submit">Add Route</button>
+        </div>
+    </form>
+</div>
