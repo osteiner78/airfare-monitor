@@ -5,7 +5,7 @@
      hx-swap="innerHTML">
     <div class="card-header">
         <span class="route">{{ tracker.origin }} &rarr; {{ tracker.destination }}</span>
-        <span class="date">{{ tracker.depart_date }}</span>
+        <span class="date"><span class="label">Flight date:</span> {{ tracker.depart_date }}</span>
     </div>
     <div class="card-body">
         <span class="best-price">
@@ -29,7 +29,7 @@
                 {% endif %}
             </span>
             {% endif %}
-            <span class="last-checked">
+            <span class="last-checked" data-iso="{{ tracker.last_searched_at or '' }}">
                 {% if tracker.last_searched_at %}
                     {{ tracker.last_searched_at }}
                 {% else %}

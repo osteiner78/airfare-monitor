@@ -8,6 +8,30 @@
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script>
         htmx.config.allowScriptTags = true;
+
+        function updateRelativeTimes() {
+            document.querySelectorAll(".last-checked[data-iso]").forEach(function (el) {
+                var iso = el.getAttribute("data-iso");
+                if (!iso) return;
+                var then = new Date(iso + "Z");
+                if (isNaN(then.getTime())) then = new Date(iso);
+                if (isNaN(then.getTime())) return;
+                var diff = Date.now() - then.getTime();
+                var mins = Math.floor(diff / 60000);
+                var hrs = Math.floor(mins / 60);
+                var days = Math.floor(hrs / 24);
+                var text;
+                if (mins < 1) text = "just now";
+                else if (mins < 60) text = mins + "m ago";
+                else if (hrs < 24) text = hrs + "h ago";
+                else text = days + "d ago";
+                el.setAttribute("title", iso);
+                el.textContent = text;
+            });
+        }
+
+        document.addEventListener("DOMContentLoaded", updateRelativeTimes);
+        document.addEventListener("htmx:afterSwap", updateRelativeTimes);
     </script>
     <script>
         document.addEventListener("htmx:responseError", function (evt) {

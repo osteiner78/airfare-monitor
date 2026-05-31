@@ -28,6 +28,11 @@ class TrackerCreate(BaseModel):
     def validate_date_format(cls, v: str | None) -> str | None:
         return _validate_date(v)
 
+    @field_validator("origin", "destination")
+    @classmethod
+    def uppercase_airport_codes(cls, v: str) -> str:
+        return v.upper()
+
 
 class TrackerUpdate(BaseModel):
     active: bool | None = None

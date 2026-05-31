@@ -110,6 +110,12 @@ h1 {
     color: #666;
 }
 
+.label {
+    font-size: 0.75rem;
+    color: #999;
+    margin-right: 0.25rem;
+}
+
 .card-body {
     display: flex;
     justify-content: space-between;
