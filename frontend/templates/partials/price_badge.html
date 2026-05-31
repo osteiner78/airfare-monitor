@@ -1,0 +1,9 @@
+{% if item.delta %}
+    {% if item.delta.type == "down" %}
+    <span class="price-badge down">&darr; -{{ "%.2f"|format(item.delta.amount) }} {{ item.flight.currency }}</span>
+    {% elif item.delta.type == "up" %}
+    <span class="price-badge up">&uarr; +{{ "%.2f"|format(item.delta.amount) }} {{ item.flight.currency }}</span>
+    {% elif item.delta.type == "new" %}
+    <span class="price-badge new">new</span>
+    {% endif %}
+{% endif %}

@@ -1,3 +1,5 @@
+import json
+
 import backend.scheduler
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
@@ -6,6 +8,10 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from backend.db import (
     create_tracker,
     delete_tracker,
+    get_flight_prices_for_snapshot,
+    get_latest_snapshot,
+    get_previous_snapshot,
+    get_price_history,
     get_tracker,
     get_tracker_summaries,
     update_tracker,
@@ -68,6 +74,75 @@ async def toggle_tracker(request: Request, tracker_id: int):
     return _render("partials/tracker_card.html", {"request": request, "tracker": updated})
 
 
+async def _build_detail_context(tracker_id: int) -> dict:
+    tracker = await get_tracker(tracker_id)
+    if tracker is None:
+        raise HTTPException(status_code=404, detail="Tracker not found")
+
+    latest = await get_latest_snapshot(tracker_id)
+    previous = await get_previous_snapshot(tracker_id)
+
+    current_flights = []
+    previous_prices = {}
+
+    if latest:
+        current_flights = await get_flight_prices_for_snapshot(latest["id"])
+
+    if previous:
+        prev = await get_flight_prices_for_snapshot(previous["id"])
+        previous_prices = {p["flight_key"]: p["price"] for p in prev}
+
+    flights_with_delta = []
+    for flight in current_flights:
+        delta = None
+        prev_price = previous_prices.get(flight["flight_key"])
+        if prev_price is not None:
+            if flight["price"] < prev_price:
+                delta = {"type": "down", "amount": round(prev_price - flight["price"], 2)}
+            elif flight["price"] > prev_price:
+                delta = {"type": "up", "amount": round(flight["price"] - prev_price, 2)}
+        else:
+            delta = {"type": "new"}
+        flights_with_delta.append({"flight": flight, "delta": delta})
+
+    history = await get_price_history(tracker_id)
+
+    chart_datasets = {}
+    for row in history:
+        key = row["flight_key"]
+        if key not in chart_datasets:
+            chart_datasets[key] = {
+                "label": f"{row.get('airline', '') or ''} {row.get('flight_number', '') or ''}".strip(),
+                "data": [],
+            }
+        chart_datasets[key]["data"].append({
+            "x": row["searched_at"],
+            "y": row["price"],
+        })
+
+    return {
+        "tracker": tracker,
+        "latest_snapshot": latest,
+        "flights_with_delta": flights_with_delta,
+        "chart_datasets": json.dumps(list(chart_datasets.values())),
+    }
+
+
+@router.get("/trackers/{tracker_id}", response_class=HTMLResponse)
+async def tracker_detail(request: Request, tracker_id: int):
+    ctx = await _build_detail_context(tracker_id)
+    ctx["request"] = request
+    return _render("tracker.html", ctx)
+
+
+@router.post("/trackers/{tracker_id}/search", response_class=HTMLResponse)
+async def search_now(request: Request, tracker_id: int):
+    await backend.scheduler.search_and_store(tracker_id)
+    ctx = await _build_detail_context(tracker_id)
+    ctx["request"] = request
+    return _render("tracker.html", ctx)
+
+
 @router.delete("/trackers/{tracker_id}", response_class=HTMLResponse)
 async def delete_tracker_card(request: Request, tracker_id: int):
     backend.scheduler.remove_tracker_job(tracker_id)
@@ -75,3 +150,32 @@ async def delete_tracker_card(request: Request, tracker_id: int):
 
     summaries = await get_tracker_summaries()
     return _render("dashboard.html", {"request": request, "trackers": summaries})
+
+
+@router.patch("/trackers/{tracker_id}/toggle-detail", response_class=HTMLResponse)
+async def toggle_tracker_detail(request: Request, tracker_id: int):
+    tracker = await get_tracker(tracker_id)
+    if tracker is None:
+        raise HTTPException(status_code=404, detail="Tracker not found")
+
+    new_active = not tracker["active"]
+    await update_tracker(tracker_id, active=new_active)
+
+    if new_active:
+        backend.scheduler.add_tracker_job(tracker_id, tracker["interval_minutes"])
+    else:
+        backend.scheduler.remove_tracker_job(tracker_id)
+
+    ctx = await _build_detail_context(tracker_id)
+    ctx["request"] = request
+    return _render("tracker.html", ctx)
+
+
+@router.delete("/trackers/{tracker_id}/detail", response_class=HTMLResponse)
+async def delete_tracker_detail(request: Request, tracker_id: int):
+    backend.scheduler.remove_tracker_job(tracker_id)
+    await delete_tracker(tracker_id)
+
+    response = HTMLResponse("")
+    response.headers["HX-Redirect"] = "/"
+    return response

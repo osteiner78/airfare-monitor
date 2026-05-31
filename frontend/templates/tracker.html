@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+    <a href="/" class="back-link">&larr; Back to Dashboard</a>
+
+    <div class="detail-header">
+        <h1>{{ tracker.origin }} &rarr; {{ tracker.destination }}</h1>
+        <span class="date">{{ tracker.depart_date }}</span>
+        <div class="detail-controls">
+            <span class="badge {% if tracker.active %}active{% else %}paused{% endif %}">
+                {{ "Active" if tracker.active else "Paused" }}
+            </span>
+            <button hx-patch="/trackers/{{ tracker.id }}/toggle-detail"
+                    hx-target="#detail-content"
+                    hx-swap="innerHTML">
+                {{ "Pause" if tracker.active else "Resume" }}
+            </button>
+            <button class="danger"
+                    hx-delete="/trackers/{{ tracker.id }}/detail"
+                    hx-confirm="Delete this tracker?"
+                    hx-target="body"
+                    hx-swap="innerHTML">
+                Delete
+            </button>
+        </div>
+    </div>
+
+    {% if latest_snapshot %}
+    <div id="detail-content">
+        <div class="chart-section">
+            <h2>Price History</h2>
+            <div class="chart-container">
+                <canvas id="price-chart"></canvas>
+            </div>
+        </div>
+
+        <div class="results-section">
+            <div class="results-header">
+                <h2>Current Results</h2>
+                <button class="search-now-btn"
+                        hx-post="/trackers/{{ tracker.id }}/search"
+                        hx-target="#detail-content"
+                        hx-swap="innerHTML"
+                        hx-indicator="#search-spinner">
+                    Search Now
+                </button>
+                <span id="search-spinner" class="htmx-indicator">Searching...</span>
+            </div>
+            {% include "partials/results_table.html" %}
+        </div>
+    </div>
+    {% else %}
+    <div id="detail-content" class="empty-state">
+        <p>No snapshots yet. Click "Search Now" to fetch flight data.</p>
+        <button class="search-now-btn"
+                hx-post="/trackers/{{ tracker.id }}/search"
+                hx-target="#detail-content"
+                hx-swap="innerHTML"
+                hx-indicator="#search-spinner">
+            Search Now
+        </button>
+        <span id="search-spinner" class="htmx-indicator">Searching...</span>
+    </div>
+    {% endif %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
+<script>
+    window.chartData = {{ chart_datasets | safe }};
+</script>
+<script src="/static/charts.js"></script>
+{% endblock %}

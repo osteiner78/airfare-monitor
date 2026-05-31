@@ -213,6 +213,18 @@ async def get_previous_snapshot(tracker_id: int) -> dict | None:
     return _row_to_dict(row) if row else None
 
 
+async def get_flight_prices_for_snapshot(snapshot_id: int) -> list:
+    db_path = get_db_path()
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM flight_prices WHERE snapshot_id = ? ORDER BY price ASC",
+            (snapshot_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
 async def get_price_history(tracker_id: int) -> list:
     db_path = get_db_path()
     async with aiosqlite.connect(db_path) as db:
