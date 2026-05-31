@@ -18,6 +18,9 @@
         <span class="badge {% if tracker.active %}active{% else %}paused{% endif %}">
             {{ "Active" if tracker.active else "Paused" }}
         </span>
+        {% if tracker.recent_alerts and tracker.recent_alerts > 0 %}
+        <span class="badge alert-count">{{ tracker.recent_alerts }}</span>
+        {% endif %}
     </div>
     <div class="card-footer">
         <div class="card-left">

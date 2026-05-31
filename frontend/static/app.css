@@ -148,6 +148,11 @@ h1 {
     color: #856404;
 }
 
+.badge.alert-count {
+    background: #ffeaa7;
+    color: #d68910;
+}
+
 .card-footer {
     display: flex;
     justify-content: space-between;

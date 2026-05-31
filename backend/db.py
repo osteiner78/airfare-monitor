@@ -58,6 +58,14 @@ CREATE TABLE IF NOT EXISTS notifications (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS notification_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    notification_id INTEGER,
+    tracker_id INTEGER NOT NULL,
+    triggered_at TEXT NOT NULL DEFAULT (datetime('now')),
+    best_price REAL NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_prices_tracker_key ON flight_prices(tracker_id, flight_key);
 CREATE INDEX IF NOT EXISTS idx_snapshots_tracker ON snapshots(tracker_id, searched_at);
 """
@@ -268,7 +276,11 @@ async def get_tracker_summaries() -> list:
                       (SELECT searched_at FROM snapshots
                        WHERE tracker_id = t.id
                        ORDER BY searched_at DESC LIMIT 1
-                      ) AS last_searched_at
+                      ) AS last_searched_at,
+                      (SELECT COUNT(*) FROM notification_log
+                       WHERE tracker_id = t.id
+                         AND triggered_at > datetime('now', '-1 day')
+                      ) AS recent_alerts
                FROM trackers t
                ORDER BY t.id""",
         ) as cur:
@@ -318,3 +330,30 @@ async def get_notification(notification_id: int) -> dict | None:
         async with db.execute("SELECT * FROM notifications WHERE id = ?", (notification_id,)) as cur:
             row = await cur.fetchone()
     return _row_to_dict(row) if row else None
+
+
+async def insert_notification_log(notification_id: int | None, tracker_id: int, best_price: float) -> dict:
+    db_path = get_db_path()
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("PRAGMA foreign_keys=ON")
+        async with db.execute(
+            "INSERT INTO notification_log (notification_id, tracker_id, best_price) VALUES (?, ?, ?)",
+            (notification_id, tracker_id, best_price),
+        ) as cur:
+            row_id = cur.lastrowid
+        await db.commit()
+        async with db.execute("SELECT * FROM notification_log WHERE id = ?", (row_id,)) as cur:
+            row = await cur.fetchone()
+    return _row_to_dict(row)
+
+
+async def get_recent_alerts_count(tracker_id: int) -> int:
+    db_path = get_db_path()
+    async with aiosqlite.connect(db_path) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM notification_log WHERE tracker_id = ? AND triggered_at > datetime('now', '-1 day')",
+            (tracker_id,),
+        ) as cur:
+            row = await cur.fetchone()
+    return row[0] if row else 0

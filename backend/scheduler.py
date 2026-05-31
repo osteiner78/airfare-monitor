@@ -56,14 +56,18 @@ async def search_and_store(tracker_id: int) -> None:
 
 
 async def _evaluate_notifications(tracker_id: int, best_price: float) -> None:
-    from backend.db import list_notifications
+    from backend.db import insert_notification_log, list_notifications
 
     rules = await list_notifications(tracker_id)
     for rule in rules:
-        if rule["rule_type"] == "price_below" and best_price > rule["threshold"]:
-            continue
-        if rule["rule_type"] == "price_above" and best_price < rule["threshold"]:
-            continue
+        triggered = False
+        if rule["rule_type"] == "price_below" and best_price <= rule["threshold"]:
+            triggered = True
+        elif rule["rule_type"] == "price_above" and best_price >= rule["threshold"]:
+            triggered = True
+
+        if triggered:
+            await insert_notification_log(rule["id"], tracker_id, best_price)
 
 
 def add_tracker_job(tracker_id: int, interval_minutes: int) -> None:
