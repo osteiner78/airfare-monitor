@@ -187,11 +187,12 @@ async def _build_detail_context(tracker_id: int) -> dict:
 
     history = await get_price_history(tracker_id)
 
-    sticky_keys = await get_sticky_top_flight_keys(tracker_id, tracker["top_n"])
+    top_n = tracker["top_n"]
+    latest_top_keys = {f["flight"]["flight_key"] for f in flights_with_delta[:top_n] if f.get("delta", {}).get("type") != "missing"}
     chart_datasets = {}
     for row in history:
         key = row["flight_key"]
-        if key not in sticky_keys:
+        if key not in latest_top_keys:
             continue
         if key not in chart_datasets:
             codes = key.split("|")[1] if "|" in key else ""

@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS trackers (
     return_date TEXT,
     currency TEXT NOT NULL DEFAULT 'EUR',
     interval_minutes INTEGER NOT NULL DEFAULT 180,
-    top_n INTEGER NOT NULL DEFAULT 10,
+    top_n INTEGER NOT NULL DEFAULT 5,
     active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
