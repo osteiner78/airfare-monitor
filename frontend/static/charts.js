@@ -1,6 +1,18 @@
 (function () {
     var canvas = document.getElementById("price-chart");
-    if (!canvas || !window.chartData) return;
+    if (!canvas) return;
+
+    var existing = Chart.getChart(canvas);
+    if (existing) existing.destroy();
+
+    if (!window.chartData || !window.chartData.length) {
+        var ctx = canvas.getContext("2d");
+        ctx.font = "14px -apple-system, BlinkMacSystemFont, sans-serif";
+        ctx.fillStyle = "#888";
+        ctx.textAlign = "center";
+        ctx.fillText("No price data yet", canvas.width / 2, canvas.height / 2);
+        return;
+    }
 
     var ctx = canvas.getContext("2d");
 
@@ -10,14 +22,17 @@
     ];
 
     window.chartData.forEach(function (ds, i) {
+        ds.data.forEach(function (point) {
+            if (typeof point.x === "string" && point.x.indexOf("T") === -1) {
+                point.x = point.x.replace(" ", "T");
+            }
+        });
         ds.borderColor = colors[i % colors.length];
         ds.backgroundColor = colors[i % colors.length] + "20";
         ds.tension = 0.1;
         ds.pointRadius = 3;
         ds.pointHoverRadius = 5;
     });
-
-    var now = new Date();
 
     new Chart(ctx, {
         type: "line",
