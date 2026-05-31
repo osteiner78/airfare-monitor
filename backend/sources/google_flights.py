@@ -83,7 +83,7 @@ class GoogleFlightsSource:
 
         airline_name = getattr(r, "primary_airline_name", None) or ""
         airline_codes = "+".join(leg.airline.name for leg in legs) if legs else ""
-        flight_numbers = "+".join(str(leg.flight_number) for leg in legs) if legs else ""
+        flight_numbers = "+".join(f"{leg.airline.name} {leg.flight_number}" for leg in legs) if legs else ""
         departure_time = legs[0].departure_datetime.isoformat() if legs else ""
         arrival_time = legs[-1].arrival_datetime.isoformat() if legs else ""
         currency = str(r.currency)
