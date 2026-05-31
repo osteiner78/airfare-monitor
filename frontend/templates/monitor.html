@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+    <h1>Monitor</h1>
+    <a href="/" class="back-link">&larr; Dashboard</a>
+
+    <div class="stat-cards">
+        <div class="stat-card">
+            <span class="stat-value">{{ tracker_stats.active }}</span>
+            <span class="stat-label">Active</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-value">{{ tracker_stats.paused }}</span>
+            <span class="stat-label">Paused</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-value">{{ "{:,}".format(db_stats.prices) }}</span>
+            <span class="stat-label">Prices</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-value">{{ "{:,}".format(db_stats.snapshots) }}</span>
+            <span class="stat-label">Snapshots</span>
+        </div>
+    </div>
+
+    <div class="logs-section">
+        <h2>System Logs <span class="auto-refresh-note">(auto-refresh every 30s)</span></h2>
+        <table class="logs-table">
+            <thead>
+                <tr>
+                    <th>Level</th>
+                    <th>Event</th>
+                    <th>Tracker</th>
+                    <th>Message</th>
+                    <th>Time</th>
+                </tr>
+            </thead>
+            <tbody hx-get="/monitor/logs"
+                   hx-trigger="every 30s"
+                   hx-swap="innerHTML">
+            {% include "partials/monitor_logs.html" %}
+            </tbody>
+        </table>
+        <span id="logs-spinner" class="htmx-indicator">Refreshing...</span>
+    </div>
+</div>
+{% endblock %}

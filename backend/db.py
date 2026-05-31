@@ -66,6 +66,15 @@ CREATE TABLE IF NOT EXISTS notification_log (
     best_price REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS system_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    level TEXT NOT NULL,
+    event TEXT NOT NULL,
+    tracker_id INTEGER,
+    message TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_prices_tracker_key ON flight_prices(tracker_id, flight_key);
 CREATE INDEX IF NOT EXISTS idx_snapshots_tracker ON snapshots(tracker_id, searched_at);
 """
@@ -397,3 +406,54 @@ async def get_sticky_top_flight_keys(tracker_id: int, top_n: int) -> set[str]:
             keys.add(key)
 
     return keys
+
+
+async def insert_log(level: str, event: str, tracker_id: int | None = None, message: str | None = None) -> dict:
+    db_path = get_db_path()
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "INSERT INTO system_logs (level, event, tracker_id, message) VALUES (?, ?, ?, ?)",
+            (level, event, tracker_id, message),
+        ) as cur:
+            row_id = cur.lastrowid
+        await db.commit()
+        async with db.execute("SELECT * FROM system_logs WHERE id = ?", (row_id,)) as cur:
+            row = await cur.fetchone()
+    return _row_to_dict(row)
+
+
+async def get_tracker_stats() -> dict:
+    db_path = get_db_path()
+    async with aiosqlite.connect(db_path) as db:
+        async with db.execute("SELECT COUNT(*) FROM trackers WHERE active = 1") as cur:
+            row = await cur.fetchone()
+            active = row[0]
+        async with db.execute("SELECT COUNT(*) FROM trackers WHERE active = 0") as cur:
+            row = await cur.fetchone()
+            paused = row[0]
+    return {"active": active, "paused": paused, "total": active + paused}
+
+
+async def get_db_stats() -> dict:
+    db_path = get_db_path()
+    async with aiosqlite.connect(db_path) as db:
+        async with db.execute("SELECT COUNT(*) FROM snapshots") as cur:
+            row = await cur.fetchone()
+            snapshots = row[0]
+        async with db.execute("SELECT COUNT(*) FROM flight_prices") as cur:
+            row = await cur.fetchone()
+            prices = row[0]
+    return {"snapshots": snapshots, "prices": prices, "path": db_path}
+
+
+async def get_recent_logs(limit: int = 50) -> list:
+    db_path = get_db_path()
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM system_logs ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ) as cur:
+            rows = await cur.fetchall()
+    return [_row_to_dict(r) for r in rows]

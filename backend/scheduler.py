@@ -6,13 +6,15 @@ scheduler: AsyncIOScheduler | None = None
 
 
 async def search_and_store(tracker_id: int) -> None:
-    from backend.db import create_snapshot, get_tracker, insert_flight_prices
+    from backend.db import create_snapshot, get_tracker, insert_flight_prices, insert_log
     from backend.fingerprint import make_flight_key
     from backend.sources import get_sources
 
     tracker = await get_tracker(tracker_id)
     if not tracker:
         return
+
+    await insert_log("INFO", "search_start", tracker_id=tracker_id)
 
     sources = get_sources()
     results = []
@@ -28,7 +30,7 @@ async def search_and_store(tracker_id: int) -> None:
             )
             results.extend(found)
         except Exception as e:
-            print(f"[search_and_store] tracker {tracker_id}: {e}")
+            await insert_log("ERROR", "search_error", tracker_id=tracker_id, message=str(e))
 
     snapshot = await create_snapshot(tracker_id, results_count=len(results))
 
@@ -54,9 +56,11 @@ async def search_and_store(tracker_id: int) -> None:
 
         await _evaluate_notifications(tracker_id, min(r.price for r in results))
 
+    await insert_log("INFO", "search_done", tracker_id=tracker_id, message=f"{len(results)} results")
+
 
 async def _evaluate_notifications(tracker_id: int, best_price: float) -> None:
-    from backend.db import insert_notification_log, list_notifications
+    from backend.db import insert_log, insert_notification_log, list_notifications
 
     rules = await list_notifications(tracker_id)
     for rule in rules:
@@ -68,6 +72,7 @@ async def _evaluate_notifications(tracker_id: int, best_price: float) -> None:
 
         if triggered:
             await insert_notification_log(rule["id"], tracker_id, best_price)
+            await insert_log("INFO", "notification_triggered", tracker_id=tracker_id, message=f"price {best_price} triggered {rule['rule_type']} {rule['threshold']}")
 
 
 def add_tracker_job(tracker_id: int, interval_minutes: int) -> None:

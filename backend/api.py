@@ -11,6 +11,7 @@ from backend.db import (
     get_price_history,
     get_tracker,
     get_tracker_summaries,
+    insert_log,
     list_notifications,
     update_tracker,
 )
@@ -34,6 +35,8 @@ async def list_trackers_endpoint():
 async def create_tracker_endpoint(payload: TrackerCreate) -> TrackerResponse:
     tracker = await create_tracker(**payload.model_dump(exclude_none=True))
     backend.scheduler.add_tracker_job(tracker["id"], tracker["interval_minutes"])
+    await insert_log("INFO", "tracker_created", tracker_id=tracker["id"],
+                     message=f"{tracker['origin']} -> {tracker['destination']}")
     return TrackerResponse(**tracker)
 
 

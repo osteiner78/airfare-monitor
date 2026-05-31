@@ -1,0 +1,9 @@
+{% for log in logs %}
+<tr class="log-row log-{{ log.level | lower }}">
+    <td class="log-level">{{ log.level }}</td>
+    <td class="log-event">{{ log.event }}</td>
+    <td class="log-tracker">{% if log.tracker_id %}#{{ log.tracker_id }}{% else %}—{% endif %}</td>
+    <td class="log-message">{{ log.message or "" }}</td>
+    <td class="log-time">{{ log.created_at }}</td>
+</tr>
+{% endfor %}

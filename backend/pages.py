@@ -9,14 +9,18 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from backend.db import (
     create_tracker,
     delete_tracker,
+    get_db_stats,
     get_flight_prices_for_snapshot,
     get_historical_best_price,
     get_latest_snapshot,
     get_previous_snapshot,
     get_price_history,
+    get_recent_logs,
     get_sticky_top_flight_keys,
     get_tracker,
+    get_tracker_stats,
     get_tracker_summaries,
+    insert_log,
     list_trackers,
     update_tracker,
 )
@@ -84,6 +88,9 @@ async def add_tracker(request: Request):
     )
     backend.scheduler.add_tracker_job(tracker["id"], tracker["interval_minutes"])
 
+    await insert_log("INFO", "tracker_created", tracker_id=tracker["id"],
+                     message=f"{tracker['origin']} -> {tracker['destination']}")
+
     summaries = _enrich_summaries(await get_tracker_summaries())
     return _render("partials/tracker_list.html", {"request": request, "trackers": summaries})
 
@@ -99,8 +106,10 @@ async def toggle_tracker(request: Request, tracker_id: int):
 
     if new_active:
         backend.scheduler.add_tracker_job(tracker_id, tracker["interval_minutes"])
+        await insert_log("INFO", "tracker_resumed", tracker_id=tracker_id)
     else:
         backend.scheduler.remove_tracker_job(tracker_id)
+        await insert_log("INFO", "tracker_paused", tracker_id=tracker_id)
 
     summaries = _enrich_summaries(await get_tracker_summaries())
     updated = next((s for s in summaries if s["id"] == tracker_id), None)
@@ -236,8 +245,13 @@ async def search_now(request: Request, tracker_id: int):
 
 @router.delete("/trackers/{tracker_id}", response_class=HTMLResponse)
 async def delete_tracker_card(request: Request, tracker_id: int):
+    tracker = await get_tracker(tracker_id)
     backend.scheduler.remove_tracker_job(tracker_id)
     await delete_tracker(tracker_id)
+
+    if tracker:
+        await insert_log("INFO", "tracker_deleted", tracker_id=tracker_id,
+                         message=f"{tracker['origin']} -> {tracker['destination']}")
 
     summaries = _enrich_summaries(await get_tracker_summaries())
     return _render("partials/tracker_list.html", {"request": request, "trackers": summaries})
@@ -254,8 +268,10 @@ async def toggle_tracker_detail(request: Request, tracker_id: int):
 
     if new_active:
         backend.scheduler.add_tracker_job(tracker_id, tracker["interval_minutes"])
+        await insert_log("INFO", "tracker_resumed", tracker_id=tracker_id)
     else:
         backend.scheduler.remove_tracker_job(tracker_id)
+        await insert_log("INFO", "tracker_paused", tracker_id=tracker_id)
 
     ctx = await _build_detail_context(tracker_id)
     ctx["request"] = request
@@ -281,3 +297,22 @@ async def refresh_all(request: Request):
 
     summaries = _enrich_summaries(await get_tracker_summaries())
     return _render("dashboard.html", {"request": request, "trackers": summaries})
+
+
+@router.get("/monitor", response_class=HTMLResponse)
+async def monitor_page(request: Request):
+    logs = await get_recent_logs(limit=50)
+    tracker_stats = await get_tracker_stats()
+    db_stats = await get_db_stats()
+    return _render("monitor.html", {
+        "request": request,
+        "logs": logs,
+        "tracker_stats": tracker_stats,
+        "db_stats": db_stats,
+    })
+
+
+@router.get("/monitor/logs", response_class=HTMLResponse)
+async def monitor_logs():
+    logs = await get_recent_logs(limit=50)
+    return _render("partials/monitor_logs.html", {"logs": logs})
