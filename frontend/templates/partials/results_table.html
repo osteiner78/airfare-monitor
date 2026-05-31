@@ -1,27 +1,35 @@
 <table class="results-table">
     <thead>
         <tr>
-            <th>Airline</th>
             <th>Flight</th>
+            <th>Date</th>
             <th>Departure</th>
             <th>Arrival</th>
             <th>Duration</th>
             <th>Stops</th>
             <th>Price</th>
             <th>Change</th>
+            <th>Link</th>
         </tr>
     </thead>
     <tbody>
         {% for item in flights_with_delta %}
         <tr>
-            <td>{{ item.flight.airline or "—" }}</td>
-            <td>{{ item.flight.flight_number or "—" }}</td>
-            <td>{{ item.flight.departure_time or "—" }}</td>
-            <td>{{ item.flight.arrival_time or "—" }}</td>
+            <td>{{ item.flight.airline or "—" }} {{ item.flight.flight_number or "—" }}</td>
+            <td>{{ item.flight.get("departure_time_date", item.flight.get("departure_time", "—")) }}</td>
+            <td>{{ item.flight.get("departure_time_time", "—") }}</td>
+            <td>{{ item.flight.get("arrival_time_time", "—") }}</td>
             <td>{% if item.flight.duration_min is not none %}{{ item.flight.duration_min }}m{% else %}—{% endif %}</td>
             <td>{{ item.flight.stops }}</td>
             <td class="price-cell">{{ "%.2f"|format(item.flight.price) }} {{ item.flight.currency }}</td>
             <td>{% include "partials/price_badge.html" %}</td>
+            <td>
+                {% if item.flight.booking_url %}
+                <a href="{{ item.flight.booking_url }}" target="_blank" class="book-link">Book</a>
+                {% else %}
+                —
+                {% endif %}
+            </td>
         </tr>
         {% endfor %}
     </tbody>

@@ -120,6 +120,18 @@ async def _build_detail_context(tracker_id: int) -> dict:
             delta = {"type": "new"}
         flights_with_delta.append({"flight": flight, "delta": delta})
 
+    for item in flights_with_delta:
+        f = item["flight"]
+        for key in ("departure_time", "arrival_time"):
+            val = f.get(key)
+            if val and "T" in str(val):
+                date_part, time_part = str(val).split("T", 1)
+                time_part = time_part.split("+")[0].split("-")[0].split("Z")[0]
+                if len(time_part) >= 5:
+                    time_part = time_part[:5]
+                f[key + "_date"] = date_part
+                f[key + "_time"] = time_part
+
     history = await get_price_history(tracker_id)
 
     chart_datasets = {}

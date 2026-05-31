@@ -298,6 +298,7 @@ h1 {
     border-radius: 8px;
     padding: 1.25rem 1.5rem;
     margin-bottom: 1.5rem;
+    overflow-x: auto;
 }
 
 .results-header {
@@ -338,13 +339,11 @@ h1 {
     border-bottom: 2px solid #eee;
     font-weight: 600;
     color: #555;
-    white-space: nowrap;
 }
 
 .results-table td {
     padding: 0.5rem 0.75rem;
     border-bottom: 1px solid #f0f0f0;
-    white-space: nowrap;
 }
 
 .results-table tbody tr:hover {
@@ -378,6 +377,17 @@ h1 {
 .price-badge.new {
     background: #d1ecf1;
     color: #0c5460;
+}
+
+.book-link {
+    color: #4a90d9;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.8125rem;
+}
+
+.book-link:hover {
+    text-decoration: underline;
 }
 
 .htmx-indicator {
@@ -460,10 +470,5 @@ h1 {
 
     .detail-controls {
         flex-wrap: wrap;
-    }
-
-    .results-table {
-        display: block;
-        overflow-x: auto;
     }
 }
