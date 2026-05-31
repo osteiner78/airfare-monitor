@@ -452,7 +452,7 @@ async def get_recent_logs(limit: int = 50) -> list:
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT * FROM system_logs ORDER BY id DESC LIMIT ?",
+            "SELECT * FROM system_logs ORDER BY created_at DESC, id DESC LIMIT ?",
             (limit,),
         ) as cur:
             rows = await cur.fetchall()

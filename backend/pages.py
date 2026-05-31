@@ -53,6 +53,21 @@ def _format_date(date_str: str) -> str:
 _env.filters["format_date"] = _format_date
 
 
+def _split_timestamps(flight_dict: dict) -> None:
+    for key in ("departure_time", "arrival_time"):
+        val = flight_dict.get(key)
+        if val and "T" in str(val):
+            date_part, time_with_tz = str(val).split("T", 1)
+            tz_suffix = ""
+            if "+" in time_with_tz:
+                tz_suffix = " +" + time_with_tz.split("+", 1)[1].split(":", 1)[0] + ":" + time_with_tz.split("+", 1)[1].split(":", 2)[1][:2]
+            time_part = time_with_tz.split("+")[0].split("-")[0].split("Z")[0]
+            if len(time_part) >= 5:
+                time_part = time_part[:5]
+            flight_dict[key + "_date"] = _format_date(date_part)
+            flight_dict[key + "_time"] = time_part + tz_suffix
+
+
 def _enrich_summaries(summaries: list) -> list:
     for s in summaries:
         delta = None
@@ -156,19 +171,7 @@ async def _build_detail_context(tracker_id: int) -> dict:
         flights_with_delta.append({"flight": flight, "delta": delta})
 
     for item in flights_with_delta:
-        f = item["flight"]
-        for key in ("departure_time", "arrival_time"):
-            val = f.get(key)
-            if val and "T" in str(val):
-                date_part, time_with_tz = str(val).split("T", 1)
-                tz_suffix = ""
-                if "+" in time_with_tz:
-                    tz_suffix = " +" + time_with_tz.split("+", 1)[1].split(":", 1)[0] + ":" + time_with_tz.split("+", 1)[1].split(":", 2)[1][:2]
-                time_part = time_with_tz.split("+")[0].split("-")[0].split("Z")[0]
-                if len(time_part) >= 5:
-                    time_part = time_part[:5]
-                f[key + "_date"] = _format_date(date_part)
-                f[key + "_time"] = time_part + tz_suffix
+        _split_timestamps(item["flight"])
 
     current_keys = {f["flight"]["flight_key"] for f in flights_with_delta}
     for key, prev_flight in prev_flights.items():
@@ -181,19 +184,7 @@ async def _build_detail_context(tracker_id: int) -> dict:
 
     for item in flights_with_delta:
         if item.get("delta", {}).get("type") == "missing":
-            f = item["flight"]
-            for key in ("departure_time", "arrival_time"):
-                val = f.get(key)
-                if val and "T" in str(val):
-                    date_part, time_with_tz = str(val).split("T", 1)
-                    tz_suffix = ""
-                    if "+" in time_with_tz:
-                        tz_suffix = " +" + time_with_tz.split("+", 1)[1].split(":", 1)[0] + ":" + time_with_tz.split("+", 1)[1].split(":", 2)[1][:2]
-                    time_part = time_with_tz.split("+")[0].split("-")[0].split("Z")[0]
-                    if len(time_part) >= 5:
-                        time_part = time_part[:5]
-                    f[key + "_date"] = _format_date(date_part)
-                    f[key + "_time"] = time_part + tz_suffix
+            _split_timestamps(item["flight"])
 
     history = await get_price_history(tracker_id)
 
@@ -215,7 +206,7 @@ async def _build_detail_context(tracker_id: int) -> dict:
             "y": row["price"],
         })
 
-    best_price = min((f["flight"]["price"] for f in flights_with_delta), default=None)
+    best_price = min((f["flight"]["price"] for f in flights_with_delta if f.get("delta", {}).get("type") != "missing"), default=None)
     historical_best_price = await get_historical_best_price(tracker_id)
 
     return {

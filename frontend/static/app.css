@@ -164,11 +164,6 @@ h1 {
     color: #666;
 }
 
-.route {
-    font-size: 1.125rem;
-    font-weight: 600;
-}
-
 .date {
     font-size: 0.8125rem;
     color: #666;
@@ -178,19 +173,6 @@ h1 {
     font-size: 0.75rem;
     color: #999;
     margin-right: 0.25rem;
-}
-
-.card-body {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.5rem;
-}
-
-.best-price {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: #2a7d4f;
 }
 
 .badge {
@@ -505,14 +487,6 @@ h1 {
 
 .card-delta.same {
     color: #6c757d;
-}
-
-.gf-link:hover {
-    background: #eef5fc;
-}
-
-.book-link:hover {
-    text-decoration: underline;
 }
 
 .htmx-indicator {
