@@ -86,6 +86,7 @@ h1 {
     padding: 1rem;
     margin-bottom: 0.75rem;
     transition: box-shadow 0.15s;
+    cursor: pointer;
 }
 
 .tracker-card:hover {
@@ -145,6 +146,25 @@ h1 {
     display: flex;
     justify-content: space-between;
     align-items: center;
+}
+
+.card-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.card-delta {
+    font-size: 0.8125rem;
+    font-weight: 600;
+}
+
+.card-delta.down {
+    color: #155724;
+}
+
+.card-delta.up {
+    color: #c0392b;
 }
 
 .last-checked {

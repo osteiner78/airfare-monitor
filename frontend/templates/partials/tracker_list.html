@@ -1,0 +1,7 @@
+{% if trackers %}
+    {% for tracker in trackers %}
+        {% include "partials/tracker_card.html" %}
+    {% endfor %}
+{% else %}
+    <p class="empty-state">No trackers yet</p>
+{% endif %}

@@ -31,9 +31,24 @@ def _render(name: str, context: dict) -> HTMLResponse:
     return HTMLResponse(template.render(context))
 
 
+def _enrich_summaries(summaries: list) -> list:
+    for s in summaries:
+        delta = None
+        best = s.get("best_price")
+        prev = s.get("previous_best_price")
+        if best is not None and prev is not None:
+            if best < prev:
+                delta = {"type": "down", "amount": round(prev - best, 2)}
+            elif best > prev:
+                delta = {"type": "up", "amount": round(best - prev, 2)}
+        s["price_delta"] = delta
+    return summaries
+
+
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     summaries = await get_tracker_summaries()
+    summaries = _enrich_summaries(summaries)
     return _render("dashboard.html", {"request": request, "trackers": summaries})
 
 
@@ -48,8 +63,8 @@ async def add_tracker(request: Request):
     )
     backend.scheduler.add_tracker_job(tracker["id"], tracker["interval_minutes"])
 
-    summaries = await get_tracker_summaries()
-    return _render("dashboard.html", {"request": request, "trackers": summaries})
+    summaries = _enrich_summaries(await get_tracker_summaries())
+    return _render("partials/tracker_list.html", {"request": request, "trackers": summaries})
 
 
 @router.patch("/trackers/{tracker_id}/toggle", response_class=HTMLResponse)
@@ -66,7 +81,7 @@ async def toggle_tracker(request: Request, tracker_id: int):
     else:
         backend.scheduler.remove_tracker_job(tracker_id)
 
-    summaries = await get_tracker_summaries()
+    summaries = _enrich_summaries(await get_tracker_summaries())
     updated = next((s for s in summaries if s["id"] == tracker_id), None)
     if updated is None:
         raise HTTPException(status_code=404, detail="Tracker not found")
@@ -148,8 +163,8 @@ async def delete_tracker_card(request: Request, tracker_id: int):
     backend.scheduler.remove_tracker_job(tracker_id)
     await delete_tracker(tracker_id)
 
-    summaries = await get_tracker_summaries()
-    return _render("dashboard.html", {"request": request, "trackers": summaries})
+    summaries = _enrich_summaries(await get_tracker_summaries())
+    return _render("partials/tracker_list.html", {"request": request, "trackers": summaries})
 
 
 @router.patch("/trackers/{tracker_id}/toggle-detail", response_class=HTMLResponse)

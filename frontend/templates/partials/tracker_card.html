@@ -1,4 +1,8 @@
-<div class="tracker-card" id="card-{{ tracker.id }}">
+<div class="tracker-card" id="card-{{ tracker.id }}"
+     hx-get="/trackers/{{ tracker.id }}"
+     hx-push-url="true"
+     hx-target="body"
+     hx-swap="innerHTML">
     <div class="card-header">
         <span class="route">{{ tracker.origin }} &rarr; {{ tracker.destination }}</span>
         <span class="date">{{ tracker.depart_date }}</span>
@@ -16,14 +20,23 @@
         </span>
     </div>
     <div class="card-footer">
-        <span class="last-checked">
-            {% if tracker.last_searched_at %}
-                {{ tracker.last_searched_at }}
-            {% else %}
-                Never
+        <div class="card-left">
+            {% if tracker.price_delta %}
+            <span class="card-delta {% if tracker.price_delta.type == 'down' %}down{% elif tracker.price_delta.type == 'up' %}up{% endif %}">
+                {% if tracker.price_delta.type == 'down' %}&darr; -{{ "%.2f"|format(tracker.price_delta.amount) }} {{ tracker.currency }}
+                {% elif tracker.price_delta.type == 'up' %}&uarr; +{{ "%.2f"|format(tracker.price_delta.amount) }} {{ tracker.currency }}
+                {% endif %}
+            </span>
             {% endif %}
-        </span>
-        <div class="card-actions">
+            <span class="last-checked">
+                {% if tracker.last_searched_at %}
+                    {{ tracker.last_searched_at }}
+                {% else %}
+                    Never
+                {% endif %}
+            </span>
+        </div>
+        <div class="card-actions" hx-get="" hx-target="" hx-swap="">
             <button hx-patch="/trackers/{{ tracker.id }}/toggle"
                     hx-target="#card-{{ tracker.id }}"
                     hx-swap="outerHTML">

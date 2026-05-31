@@ -257,6 +257,14 @@ async def get_tracker_summaries() -> list:
                                      WHERE tracker_id = t.id
                                      ORDER BY searched_at DESC LIMIT 1)
                       ) AS best_price,
+                      (SELECT MIN(fp.price)
+                       FROM flight_prices fp
+                       JOIN snapshots s ON fp.snapshot_id = s.id
+                       WHERE fp.tracker_id = t.id
+                         AND s.id = (SELECT id FROM snapshots
+                                     WHERE tracker_id = t.id
+                                     ORDER BY searched_at DESC LIMIT 1 OFFSET 1)
+                      ) AS previous_best_price,
                       (SELECT searched_at FROM snapshots
                        WHERE tracker_id = t.id
                        ORDER BY searched_at DESC LIMIT 1

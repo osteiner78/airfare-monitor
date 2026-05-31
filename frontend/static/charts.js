@@ -18,7 +18,6 @@
     });
 
     var now = new Date();
-    var yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
     new Chart(ctx, {
         type: "line",
@@ -37,7 +36,6 @@
                             hour: "MMM d HH:mm",
                         },
                     },
-                    min: yesterday.toISOString(),
                 },
                 y: {
                     title: {
