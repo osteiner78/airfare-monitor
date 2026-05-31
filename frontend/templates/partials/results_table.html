@@ -22,7 +22,7 @@
             <td>{{ item.flight.get("departure_time_time", "—") }}</td>
             <td>{{ item.flight.get("arrival_time_date", "—") }}</td>
             <td>{{ item.flight.get("arrival_time_time", "—") }}</td>
-            <td>{% if item.flight.duration_min is not none %}{{ item.flight.duration_min }}m{% else %}—{% endif %}</td>
+            <td>{% if item.flight.duration_min is not none %}{{ item.flight.duration_min // 60 }}h {{ "%02d"|format(item.flight.duration_min % 60) }}m{% else %}—{% endif %}</td>
             <td>{{ item.flight.stops }}</td>
             <td class="price-cell">{{ "%.2f"|format(item.flight.price) }} {{ item.flight.currency }}</td>
             <td>{% include "partials/price_badge.html" %}</td>

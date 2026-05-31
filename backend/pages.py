@@ -39,8 +39,8 @@ def _format_date(date_str: str) -> str:
         dt = datetime.strptime(date_str, "%Y-%m-%d")
         now = datetime.now()
         if dt.year == now.year:
-            return dt.strftime("%b %-d")
-        return dt.strftime("%b %-d, %Y")
+            return dt.strftime("%B %-d")
+        return dt.strftime("%B %-d, %Y")
     except (ValueError, TypeError):
         return date_str
 
@@ -153,14 +153,17 @@ async def _build_detail_context(tracker_id: int) -> dict:
                 time_part = time_with_tz.split("+")[0].split("-")[0].split("Z")[0]
                 if len(time_part) >= 5:
                     time_part = time_part[:5]
-                f[key + "_date"] = date_part
+                f[key + "_date"] = _format_date(date_part)
                 f[key + "_time"] = time_part + tz_suffix
 
     history = await get_price_history(tracker_id)
 
+    current_keys = {f["flight"]["flight_key"] for f in flights_with_delta}
     chart_datasets = {}
     for row in history:
         key = row["flight_key"]
+        if key not in current_keys:
+            continue
         if key not in chart_datasets:
             chart_datasets[key] = {
                 "label": f"{row.get('airline', '') or ''} {row.get('flight_number', '') or ''}".strip(),

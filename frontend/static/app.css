@@ -294,13 +294,21 @@ h1 {
     margin-bottom: 1.5rem;
 }
 
-.detail-header h1 {
+.detail-header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.75rem;
+}
+
+.detail-header-left h1 {
     margin-bottom: 0.25rem;
 }
 
-.detail-prices {
-    font-size: 0.875rem;
-    margin-bottom: 0.35rem;
+.detail-header .date {
+    display: inline-block;
+    font-size: 1.05rem;
+    color: #444;
 }
 
 .detail-best {
@@ -326,13 +334,6 @@ h1 {
 
 .gf-link:hover {
     background: #eef5fc;
-}
-
-.detail-header .date {
-    display: inline-block;
-    font-size: 0.875rem;
-    color: #666;
-    margin-bottom: 0.75rem;
 }
 
 .detail-controls {

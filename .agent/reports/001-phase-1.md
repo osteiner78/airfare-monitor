@@ -1,5 +1,5 @@
 ============================= test session starts ==============================
-platform darwin -- Python 3.13.13, pytest-9.0.3, pluggy-1.6.0 -- /Users/oliversteiner/miniconda3/bin/python3.13
+platform darwin -- Python 3.13.13, pytest-9.0.3, pluggy-1.6.0 -- /Users/oliversteiner/miniconda3/bin/python
 cachedir: .pytest_cache
 rootdir: /Users/oliversteiner/Documents/code/airfare-monitor
 configfile: pyproject.toml
@@ -26,4 +26,4 @@ tests/test_db.py::test_get_tracker_returns_none_for_zero_id PASSED       [ 88%]
 tests/test_db.py::test_get_tracker_returns_none_for_negative_id PASSED   [ 94%]
 tests/test_db.py::test_delete_tracker_on_missing_id_does_not_raise PASSED [100%]
 
-============================== 18 passed in 0.10s ==============================
+============================== 18 passed in 0.12s ==============================

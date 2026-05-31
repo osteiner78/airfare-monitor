@@ -111,5 +111,5 @@ class GoogleFlightsSource:
             departure_time=departure_time,
             arrival_time=arrival_time,
             legs_json=json.dumps(legs_data),
-            booking_url=f"https://www.google.com/travel/flights?q=Flights+to+{dest}+from+{origin}+on+{depart_date}&curr={currency}&tt=o",
+            booking_url=f"https://www.google.com/travel/flights?q=One-way+flights+to+{dest}+from+{origin}+on+{depart_date}&curr={currency}",
         )
