@@ -175,7 +175,7 @@ async def search_now(request: Request, tracker_id: int):
     await backend.scheduler.search_and_store(tracker_id)
     ctx = await _build_detail_context(tracker_id)
     ctx["request"] = request
-    return _render("partials/detail_content.html", ctx)
+    return _render("partials/detail_page.html", ctx)
 
 
 @router.delete("/trackers/{tracker_id}", response_class=HTMLResponse)
