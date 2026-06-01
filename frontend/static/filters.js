@@ -4,6 +4,34 @@
         "#1abc9c", "#f39c12", "#3498db", "#e91e63", "#00bcd4",
     ];
 
+    function saveFilterState() {
+        var trackerId = window.trackerId;
+        if (trackerId == null) return;
+        var stopsEl = document.getElementById("filter-stops");
+        var durationEl = document.getElementById("filter-duration");
+        if (!stopsEl || !durationEl) return;
+        var airlines = [];
+        document.querySelectorAll(".filter-airline").forEach(function (cb) {
+            if (cb.checked) airlines.push(cb.value);
+        });
+        try {
+            localStorage.setItem("filterState_" + trackerId, JSON.stringify({
+                stops: stopsEl.value,
+                duration: durationEl.value,
+                airlines: airlines,
+            }));
+        } catch (e) {}
+    }
+
+    function loadFilterState() {
+        var trackerId = window.trackerId;
+        if (trackerId == null) return null;
+        try {
+            var raw = localStorage.getItem("filterState_" + trackerId);
+            return raw ? JSON.parse(raw) : null;
+        } catch (e) { return null; }
+    }
+
     function applyFilters() {
         var allFlights = window.allFlights || [];
         var topN = window.chartTopN || 5;
@@ -34,6 +62,35 @@
         var survivors = allFlights.filter(passes);
         survivors.sort(function (a, b) { return a.price - b.price; });
         var topSurvivors = survivors.slice(0, topN);
+
+        var isFiltered = survivors.length < allFlights.length;
+        var currency = window.chartCurrency || "";
+        var trackerId = window.trackerId;
+
+        // Update "Best now" in detail header
+        var bestEl = document.getElementById("detail-best-price");
+        if (bestEl) {
+            if (survivors.length > 0) {
+                bestEl.textContent = "Best now: " + survivors[0].price.toFixed(2) + " " + currency +
+                    (isFiltered ? " (filtered)" : "");
+            } else {
+                bestEl.textContent = "Best now: — (filtered)";
+            }
+        }
+
+        // Persist filtered best price for dashboard cards
+        if (trackerId != null) {
+            try {
+                localStorage.setItem("filteredBest_" + trackerId, JSON.stringify({
+                    price: survivors.length > 0 ? survivors[0].price : null,
+                    filtered: isFiltered,
+                    currency: currency,
+                }));
+            } catch (e) {}
+        }
+
+        // Save current filter state
+        saveFilterState();
 
         var colorByKey = {};
         topSurvivors.forEach(function (f, i) {
@@ -83,6 +140,20 @@
 
         if (!stopsEl || !durationEl) return;
 
+        // Restore saved filter state
+        var saved = loadFilterState();
+        if (saved) {
+            stopsEl.value = saved.stops;
+            durationEl.value = saved.duration;
+            if (durationLabel) durationLabel.textContent = formatDuration(parseInt(saved.duration, 10));
+            if (saved.airlines) {
+                var savedSet = new Set(saved.airlines);
+                document.querySelectorAll(".filter-airline").forEach(function (cb) {
+                    cb.checked = savedSet.has(cb.value);
+                });
+            }
+        }
+
         stopsEl.addEventListener("change", applyFilters);
 
         durationEl.addEventListener("input", function () {
@@ -105,6 +176,8 @@
                 applyFilters();
             });
         }
+
+        applyFilters();
     }
 
     document.addEventListener("htmx:afterSwap", init);

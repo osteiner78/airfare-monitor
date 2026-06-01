@@ -720,7 +720,7 @@ h1 {
 }
 
 .filter-sidebar {
-    width: 200px;
+    width: 240px;
     flex-shrink: 0;
     background: #fff;
     border: 1px solid #ddd;
@@ -728,15 +728,20 @@ h1 {
     padding: 1rem;
     position: sticky;
     top: 1rem;
+    max-height: calc(100vh - 2rem);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .filter-group {
     margin-bottom: 1rem;
 }
 
-.filter-group label {
+.filter-group > label {
     display: block;
     font-size: 0.8rem;
+    font-weight: 600;
     color: #555;
     margin-bottom: 0.35rem;
 }
@@ -745,6 +750,20 @@ h1 {
 .filter-group input[type="range"] {
     width: 100%;
     box-sizing: border-box;
+}
+
+.filter-group.filter-airlines {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.filter-group.filter-airlines .airline-list {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
 }
 
 .airline-list {
@@ -768,10 +787,24 @@ h1 {
     text-overflow: ellipsis;
 }
 
-.airline-meta {
+.airline-count {
+    color: #999;
+    font-size: 0.75rem;
+}
+
+.airline-price {
     margin-left: auto;
+    text-align: right;
     white-space: nowrap;
-    color: #555;
+    color: #444;
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.filtered-tag {
+    font-size: 0.7rem;
+    color: #888;
+    text-align: right;
 }
 
 .filter-reset-btn {

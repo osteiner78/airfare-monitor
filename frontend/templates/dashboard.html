@@ -18,4 +18,28 @@
         {% include "partials/tracker_list.html" %}
     </div>
 </div>
+<script>
+    function applyFilteredPrices() {
+        document.querySelectorAll(".tracker-card").forEach(function (card) {
+            var m = card.id.match(/^card-(\d+)$/);
+            if (!m) return;
+            var priceEl = card.querySelector(".best-price");
+            var tag = card.querySelector(".filtered-tag");
+            if (!priceEl) return;
+            try {
+                var raw = localStorage.getItem("filteredBest_" + m[1]);
+                if (!raw) { if (tag) tag.style.display = "none"; return; }
+                var data = JSON.parse(raw);
+                if (data.filtered && data.price !== null) {
+                    priceEl.textContent = data.price.toFixed(2) + " " + data.currency;
+                    if (tag) tag.style.display = "";
+                } else {
+                    if (tag) tag.style.display = "none";
+                }
+            } catch (e) {}
+        });
+    }
+    document.addEventListener("DOMContentLoaded", applyFilteredPrices);
+    document.addEventListener("htmx:afterSwap", applyFilteredPrices);
+</script>
 {% endblock %}

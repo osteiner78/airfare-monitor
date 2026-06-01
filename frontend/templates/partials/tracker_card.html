@@ -21,6 +21,7 @@
                     </span>
                     {{ airline_logo(tracker.best_flight_number, tracker.best_flight_number) }}
                 </div>
+                <small class="filtered-tag" style="display:none">(filtered)</small>
                 {% if tracker.price_delta %}
                 <span class="card-delta {% if tracker.price_delta.type == 'down' %}down{% elif tracker.price_delta.type == 'up' %}up{% elif tracker.price_delta.type == 'same' %}same{% endif %}">
                     {% if tracker.price_delta.type == 'down' %}&darr; -{{ "%.2f"|format(tracker.price_delta.amount) }} {{ tracker.currency }}
