@@ -26,6 +26,16 @@ from backend.db import (
     update_tracker,
 )
 
+CHART_COLORS = [
+    "#4a90d9", "#e67e22", "#2ecc71", "#e74c3c", "#9b59b6",
+    "#1abc9c", "#f39c12", "#3498db", "#e91e63", "#00bcd4",
+]
+
+
+def _assign_chart_colors(flight_keys: list[str]) -> dict[str, str]:
+    return {key: CHART_COLORS[i % len(CHART_COLORS)] for i, key in enumerate(flight_keys)}
+
+
 _env = Environment(
     loader=FileSystemLoader("frontend/templates"),
     autoescape=select_autoescape(),
