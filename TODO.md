@@ -6,6 +6,7 @@
 ## Improvements
 - [ ] **Design polish** — pass through Claude Design for UI/UX improvements.
 - [ ] **Bundle Chart.js locally** — currently loaded from jsdelivr CDN. Bundle for offline use.
+- [x] Change currency symbol -> EUR to <euro symbol>
 - [x] **Replace airline codes with airline logos/icons**
 
 
