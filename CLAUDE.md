@@ -17,7 +17,7 @@ airfare-monitor/
 │   ├── db.py                # aiosqlite schema + CRUD
 │   ├── models.py            # Pydantic schemas
 │   ├── api.py               # JSON API router (/api/*)
-│   ├── pages.py             # HTML page router (/, /trackers/{id})
+│   ├── pages.py             # HTML page router (/, /trackers/{id}, /monitor)
 │   ├── scheduler.py         # APScheduler job management
 │   ├── fingerprint.py       # flight_key generation
 │   └── sources/
@@ -25,19 +25,37 @@ airfare-monitor/
 │   ├── templates/
 │   │   ├── base.html
 │   │   ├── dashboard.html
-│   │   ├── tracker.html              # Phase 5
+│   │   ├── tracker.html
+│   │   ├── monitor.html
 │   │   └── partials/
 │   │       ├── add_form.html
 │   │       ├── tracker_card.html
-│   │       ├── results_table.html     # Phase 5
-│   │       └── price_badge.html       # Phase 5
+│   │       ├── tracker_list.html
+│   │       ├── detail_page.html
+│   │       ├── results_table.html
+│   │       ├── price_badge.html
+│   │       └── monitor_logs.html
 │   └── static/
 │       ├── app.css
-│       └── charts.js                  # Phase 5
+│       └── charts.js
 ├── data/            # SQLite DB (auto-created, gitignored)
 ├── tests/
+│   ├── conftest.py
+│   ├── test_api.py
+│   ├── test_best_price.py
+│   ├── test_chart_data.py
+│   ├── test_db.py
+│   ├── test_delta.py
+│   ├── test_fingerprint.py
+│   ├── test_logging.py
+│   ├── test_normalization.py
+│   ├── test_notification_log.py
+│   ├── test_notifications.py
+│   ├── test_pages.py
+│   └── test_sources.py
 ├── .agent/
 ├── requirements.txt
+├── TODO.md
 └── pyproject.toml
 ```
 
@@ -132,5 +150,12 @@ Ask before:
 - If the `fli` library breaks due to Google page changes, the fix is isolated to `backend/sources/google_flights.py`.
 - **Template rendering bypass**: Python 3.13 + Jinja2 3.1.6 has a bug where Starlette's `Jinja2Templates.TemplateResponse` triggers `TypeError: unhashable type: 'dict'` in Jinja2's LRUCache when `env.globals` is non-empty. `backend/pages.py` works around this by using `jinja2.Environment(cache_size=0)` directly with `get_template()` + `render()` + `HTMLResponse()`. If upgrading Python/Jinja2/Starlette, try restoring `Jinja2Templates` — but verify with a quick smoke test first.
 - **Router separation**: `backend/api.py` handles JSON API under `/api/*`, `backend/pages.py` handles HTML pages at `/*`. Both are included in `main.py`. The pages router also has HTMX-specific routes (toggle, form submit) that return HTML partials.
-- **Chart.js time adapter issue**: CDN-loaded `chartjs-adapter-date-fns@3` fails silently on some browser/network configurations (blank chart, no JS error). The fallback is a numeric axis (`type: "linear"`) where x-values are epoch milliseconds from `new Date(iso).getTime()`, with custom tick formatting via `ticks.callback`. If restoring time adapter: verify with `chart_test_time.html` first, load it BEFORE Chart.js, and confirm the adapter bundle resolves (curl shows 200 but the browser may block due to CORS or Content-Type mismatch).
-- **Chart sticky top-N**: `get_sticky_top_flight_keys(tracker_id, top_n)` collects flight_keys that ever appeared in the top N cheapest at ANY snapshot. This is a union, so the total chart lines can exceed `top_n` (e.g., different flights enter/leave the top N across snapshots). The `top_n` comes from `trackers.top_n` (DB default 10, plan intended 5). To change existing trackers: `UPDATE trackers SET top_n = 5`.
+- **Chart.js time adapter issue**: CDN-loaded `chartjs-adapter-date-fns@3` fails silently on some browser/network configurations (blank chart, no JS error). The current working solution is a numeric axis (`type: "linear"`) where x-values are epoch milliseconds from `new Date(iso).getTime()`, with custom tick formatting via `ticks.callback`. The adapter CDN is NOT loaded — it was removed after repeated failures. If restoring time adapter: verify with `chart_test_time.html` first, load it BEFORE Chart.js, and confirm the adapter bundle resolves (curl shows 200 but the browser may block due to CORS or Content-Type mismatch).
+- **Chart sticky top-N**: `get_sticky_top_flight_keys(tracker_id, top_n)` collects flight_keys that ever appeared in the top N cheapest at ANY snapshot. This is a union, so the total chart lines can exceed `top_n` (e.g., different flights enter/leave the top N across snapshots). The `top_n` comes from `trackers.top_n` (DB default 5, changed from plan's original 10).
+- **Flight data field evolution**: `airline` field stores the full airline name (e.g. "Vueling"), `flight_number` includes the code + number (e.g. "VY 6201"). The results table shows both: Airline column = logo (falls back to name), Flight column = code+number. `airline_codes` is computed in `_map_result` but unused (dead code, harmless). The `flight_key` format uses full names in the second segment — uniqueness comes from `departure_time`, not the airline segment.
+- **Airline logos**: results table and dashboard cards show airline logos from kiwi.com (`images.kiwi.com/airlines/64/{IATA}.png`). The IATA code is extracted from `flight_number`'s prefix by the `airline_code` Jinja filter in `pages.py` (2-char IATA designator only; multi-leg uses the first carrier). Rendering is centralized in the `airline_logo` macro (`templates/partials/macros.html`). kiwi serves a generic plane icon (HTTP 200) for unknown codes, so `onerror` can't catch those — add such codes to `LOGO_UNAVAILABLE_CODES` in `pages.py` to force the airline-name fallback. `onerror` still covers a fully blocked CDN. Dashboard cards use `best_flight_number` from the `get_tracker_summaries` correlated subquery (cheapest flight in latest snapshot).
+- **Logging subsystem**: `system_logs` table in SQLite, with `insert_log(level, event, tracker_id, message)`. All search events, tracker lifecycle, and notification triggers are logged. Monitor page at `GET /monitor` with auto-refresh every 30s via HTMX polling. Log functions used: `insert_log()`, `get_recent_logs(limit)`, `get_tracker_stats()`, `get_db_stats()`.
+- **`_split_timestamps(flight_dict)` helper** in `pages.py` — extracts date/time/tz from ISO 8601 departure/arrival times. Called for both current and missing flights. Use this helper if timestamp format changes.
+- **`.gitignore`** has `*.db` and `data/` patterns — production database is safe from accidental commits.
+- **`ensure_db_initialized` middleware** in `main.py` is a workaround for httpx 0.28 not triggering ASGI lifespan during tests. Keep it. The `_initialized_paths` set deduplicates per unique DB path.
+- **Current test suite**: `pytest tests/ -v -k "not slow"` → 118 passed, 1 deselected. Test files: test_airline_logo, test_api, test_best_price, test_chart_data, test_db, test_delta, test_fingerprint, test_logging, test_normalization, test_notification_log, test_notifications, test_pages, test_sources.
