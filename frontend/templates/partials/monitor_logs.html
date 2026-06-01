@@ -8,6 +8,9 @@
         {% else %}—{% endif %}
     </td>
     <td class="log-message">{{ log.message or "" }}</td>
-    <td class="log-time">{{ log.created_at }}</td>
+    <td class="log-time" data-utc="{{ log.created_at }}">
+        <span class="log-date">—</span>
+        <span class="log-hour">—</span>
+    </td>
 </tr>
 {% endfor %}

@@ -80,7 +80,7 @@ async def test_chart_datasets_limited_to_sticky_top_n(client):
     }])
     response = await client.get("/trackers/1")
     assert response.status_code == 200
-    assert '"label": "6201"' in response.text
+    assert '"label": "Vueling 6201"' in response.text
 
 
 # --- NEW-BEHAVIOR (plan 009): chart datasets carry a server-assigned color ---
@@ -167,5 +167,5 @@ async def test_color_assigned_by_price_rank_not_history_order(client):
     response = await client.get("/trackers/1")
     datasets = _extract_js_global(response.text, "chartData")
     color_by_label = {d["label"]: d["color"] for d in datasets}
-    assert color_by_label["AA1"] == "#4a90d9"
-    assert color_by_label["BB2"] == "#e67e22"
+    assert color_by_label["Ayy AA1"] == "#4a90d9"
+    assert color_by_label["Bee BB2"] == "#e67e22"

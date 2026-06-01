@@ -704,6 +704,21 @@ h1 {
     color: #d68910;
 }
 
+.log-time {
+    white-space: nowrap;
+}
+
+.log-date {
+    display: block;
+    font-size: 0.75rem;
+    color: #555;
+}
+
+.log-hour {
+    display: block;
+    font-size: 0.8rem;
+}
+
 .airline-logo {
     height: 32px;
     width: auto;

@@ -110,7 +110,7 @@ def _airline_code(flight_number: str | None) -> str:
 
 _env.filters["airline_code"] = _airline_code
 
-_CURRENCY_SYMBOLS: dict[str, str] = {"EUR": "€", "USD": "$", "GBP": "£", "CHF": "CHF "}
+_CURRENCY_SYMBOLS: dict[str, str] = {"EUR": "€ ", "USD": "$ ", "GBP": "£ ", "CHF": "CHF "}
 _env.filters["currency_symbol"] = lambda c: _CURRENCY_SYMBOLS.get(c or "", (c or "") + " ")
 
 
@@ -268,15 +268,20 @@ async def _build_detail_context(tracker_id: int) -> dict:
         for f in flights_with_delta[:top_n]
         if f.get("delta", {}).get("type") != "missing"
     ]
+    def _flight_label(flight: dict) -> str:
+        num = (flight.get("flight_number") or "").strip()
+        airline = (flight.get("airline") or "").strip()
+        if num and airline:
+            return f"{airline} {num}"
+        return num or airline or flight["flight_key"]
+
     # pre-create datasets in price-rank order with label from current flight data
     chart_datasets = {}
     for f in flights_with_delta[:top_n]:
         if f.get("delta", {}).get("type") == "missing":
             continue
         key = f["flight"]["flight_key"]
-        flight = f["flight"]
-        label = (flight.get("flight_number") or "").strip() or flight.get("airline", "") or key
-        chart_datasets[key] = {"label": label, "data": []}
+        chart_datasets[key] = {"label": _flight_label(f["flight"]), "data": []}
 
     flight_key_colors = _assign_chart_colors(ordered_top_keys)
     for key, entry in chart_datasets.items():
@@ -302,10 +307,9 @@ async def _build_detail_context(tracker_id: int) -> dict:
             continue
         flight = f["flight"]
         key = flight["flight_key"]
-        label = (flight.get("flight_number") or "").strip() or flight.get("airline", "") or key
         all_flights.append({
             "flight_key": key,
-            "label": label,
+            "label": _flight_label(flight),
             "price": flight["price"],
             "stops": flight.get("stops"),
             "duration_min": flight.get("duration_min"),

@@ -1,8 +1,8 @@
 {% if item.delta %}
     {% if item.delta.type == "down" %}
-    <span class="price-badge down">&darr; -{{ item.flight.currency | currency_symbol }}{{ "%.2f"|format(item.delta.amount) }}</span>
+    <span class="price-badge down">&darr; -{{ item.flight.currency | currency_symbol }}{{ "%.0f"|format(item.delta.amount) }}</span>
     {% elif item.delta.type == "up" %}
-    <span class="price-badge up">&uarr; +{{ item.flight.currency | currency_symbol }}{{ "%.2f"|format(item.delta.amount) }}</span>
+    <span class="price-badge up">&uarr; +{{ item.flight.currency | currency_symbol }}{{ "%.0f"|format(item.delta.amount) }}</span>
     {% elif item.delta.type == "same" %}
     <span class="price-badge same">—</span>
     {% elif item.delta.type == "new" %}

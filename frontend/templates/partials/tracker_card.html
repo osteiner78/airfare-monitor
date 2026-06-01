@@ -14,7 +14,7 @@
                 <div class="price-logo-row">
                     <span class="best-price">
                         {% if tracker.best_price is not none %}
-                            {{ tracker.currency | currency_symbol }}{{ "%.2f"|format(tracker.best_price) }}
+                            {{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.best_price) }}
                         {% else %}
                             &mdash;
                         {% endif %}
@@ -24,14 +24,14 @@
                 <small class="filtered-tag" style="display:none">(filtered)</small>
                 {% if tracker.price_delta %}
                 <span class="card-delta {% if tracker.price_delta.type == 'down' %}down{% elif tracker.price_delta.type == 'up' %}up{% elif tracker.price_delta.type == 'same' %}same{% endif %}">
-                    {% if tracker.price_delta.type == 'down' %}&darr; -{{ tracker.currency | currency_symbol }}{{ "%.2f"|format(tracker.price_delta.amount) }}
-                    {% elif tracker.price_delta.type == 'up' %}&uarr; +{{ tracker.currency | currency_symbol }}{{ "%.2f"|format(tracker.price_delta.amount) }}
+                    {% if tracker.price_delta.type == 'down' %}&darr; -{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.price_delta.amount) }}
+                    {% elif tracker.price_delta.type == 'up' %}&uarr; +{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.price_delta.amount) }}
                     {% elif tracker.price_delta.type == 'same' %}&mdash;
                     {% endif %}
                 </span>
                 {% endif %}
                 {% if tracker.historical_best_price is not none %}
-                <span class="card-hist">All-time best: {{ tracker.currency | currency_symbol }}{{ "%.2f"|format(tracker.historical_best_price) }}</span>
+                <span class="card-hist">All-time best: {{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.historical_best_price) }}</span>
                 {% endif %}
             </div>
         </div>

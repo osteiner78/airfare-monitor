@@ -37,6 +37,7 @@
                     <th>Event</th>
                     <th>Route</th>
                     <th>Message</th>
+                    <th>Date</th>
                     <th>Time</th>
                 </tr>
             </thead>
@@ -50,4 +51,20 @@
         <span id="logs-spinner" class="htmx-indicator">Refreshing...</span>
     </div>
 </div>
+<script>
+    function formatLogTimes() {
+        document.querySelectorAll(".log-time[data-utc]").forEach(function (td) {
+            var utc = td.getAttribute("data-utc");
+            if (!utc) return;
+            var d = new Date(utc + "Z");
+            if (isNaN(d.getTime())) return;
+            var dateEl = td.querySelector(".log-date");
+            var hourEl = td.querySelector(".log-hour");
+            if (dateEl) dateEl.textContent = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+            if (hourEl) hourEl.textContent = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+        });
+    }
+    document.addEventListener("DOMContentLoaded", formatLogTimes);
+    document.addEventListener("htmx:afterSwap", formatLogTimes);
+</script>
 {% endblock %}

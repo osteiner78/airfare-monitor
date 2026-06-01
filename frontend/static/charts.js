@@ -49,6 +49,27 @@ window.renderPriceChart = function (datasets) {
             scales: {
                 x: {
                     type: "linear",
+                    afterBuildTicks: function (scale) {
+                        var min = scale.min, max = scale.max;
+                        var hr = 3600000;
+                        var rangeHours = (max - min) / hr;
+                        // Pick a "nice" step that gives roughly 6–12 ticks.
+                        var niceSizes = [1, 2, 3, 6, 12, 24, 48, 72];
+                        var step = niceSizes[niceSizes.length - 1];
+                        for (var i = 0; i < niceSizes.length; i++) {
+                            if (rangeHours / niceSizes[i] <= 12) {
+                                step = niceSizes[i];
+                                break;
+                            }
+                        }
+                        var stepMs = step * hr;
+                        // Align to integer UTC hours (works for whole-hour TZ offsets).
+                        var first = Math.ceil(min / stepMs) * stepMs;
+                        scale.ticks = [];
+                        for (var t = first; t <= max; t += stepMs) {
+                            scale.ticks.push({ value: t });
+                        }
+                    },
                     ticks: {
                         callback: function (val) {
                             var d = new Date(val);
@@ -60,12 +81,7 @@ window.renderPriceChart = function (datasets) {
                         },
                     },
                 },
-                y: {
-                    title: {
-                        display: true,
-                        text: "Price",
-                    },
-                },
+                y: {},
             },
             plugins: {
                 legend: {
@@ -81,7 +97,7 @@ window.renderPriceChart = function (datasets) {
                         },
                         label: function (ctx) {
                             var currency = window.chartCurrency || "";
-                            return ctx.dataset.label + ": " + currency + ctx.parsed.y.toFixed(2);
+                            return ctx.dataset.label + ": " + currency + Math.round(ctx.parsed.y);
                         },
                     },
                 },
