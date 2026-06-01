@@ -219,26 +219,34 @@ async def _build_detail_context(tracker_id: int) -> dict:
     history = await get_price_history(tracker_id)
 
     top_n = tracker["top_n"]
-    latest_top_keys = {f["flight"]["flight_key"] for f in flights_with_delta[:top_n] if f.get("delta", {}).get("type") != "missing"}
+    # ordered by price ascending (flights_with_delta is already price-asc from the DB query)
+    ordered_top_keys = [
+        f["flight"]["flight_key"]
+        for f in flights_with_delta[:top_n]
+        if f.get("delta", {}).get("type") != "missing"
+    ]
+    # pre-create datasets in price-rank order with label from current flight data
     chart_datasets = {}
+    for f in flights_with_delta[:top_n]:
+        if f.get("delta", {}).get("type") == "missing":
+            continue
+        key = f["flight"]["flight_key"]
+        flight = f["flight"]
+        label = (flight.get("flight_number") or "").strip() or flight.get("airline", "") or key
+        chart_datasets[key] = {"label": label, "data": []}
+
+    flight_key_colors = _assign_chart_colors(ordered_top_keys)
+    for key, entry in chart_datasets.items():
+        entry["color"] = flight_key_colors[key]
+
     for row in history:
         key = row["flight_key"]
-        if key not in latest_top_keys:
-            continue
         if key not in chart_datasets:
-            label = (row.get("flight_number") or "").strip() or row.get("airline", "") or key
-            chart_datasets[key] = {
-                "label": label,
-                "data": [],
-            }
+            continue
         chart_datasets[key]["data"].append({
             "x": row["searched_at"].replace(" ", "T"),
             "y": row["price"],
         })
-
-    flight_key_colors = _assign_chart_colors(list(chart_datasets.keys()))
-    for key, entry in chart_datasets.items():
-        entry["color"] = flight_key_colors[key]
 
     best_price = min((f["flight"]["price"] for f in flights_with_delta if f.get("delta", {}).get("type") != "missing"), default=None)
     historical_best_price = await get_historical_best_price(tracker_id)
