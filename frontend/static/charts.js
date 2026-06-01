@@ -24,8 +24,8 @@
         ds.data.forEach(function (point) {
             point.x = new Date(point.x).getTime();
         });
-        ds.borderColor = colors[i % colors.length];
-        ds.backgroundColor = colors[i % colors.length] + "20";
+        ds.borderColor = ds.color || colors[i % colors.length];
+        ds.backgroundColor = (ds.color || colors[i % colors.length]) + "20";
         ds.tension = 0.1;
         ds.pointRadius = 3;
         ds.pointHoverRadius = 5;

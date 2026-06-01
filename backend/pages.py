@@ -235,6 +235,10 @@ async def _build_detail_context(tracker_id: int) -> dict:
             "y": row["price"],
         })
 
+    flight_key_colors = _assign_chart_colors(list(chart_datasets.keys()))
+    for key, entry in chart_datasets.items():
+        entry["color"] = flight_key_colors[key]
+
     best_price = min((f["flight"]["price"] for f in flights_with_delta if f.get("delta", {}).get("type") != "missing"), default=None)
     historical_best_price = await get_historical_best_price(tracker_id)
 
@@ -243,6 +247,7 @@ async def _build_detail_context(tracker_id: int) -> dict:
         "latest_snapshot": latest,
         "flights_with_delta": flights_with_delta,
         "chart_datasets": json.dumps(list(chart_datasets.values())),
+        "flight_key_colors": flight_key_colors,
         "best_price": best_price,
         "historical_best_price": historical_best_price,
     }
