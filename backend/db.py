@@ -469,7 +469,10 @@ async def get_recent_logs(limit: int = 50) -> list:
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT * FROM system_logs ORDER BY created_at DESC, id DESC LIMIT ?",
+            """SELECT l.*, t.origin, t.destination, t.depart_date AS tracker_depart_date
+               FROM system_logs l
+               LEFT JOIN trackers t ON l.tracker_id = t.id
+               ORDER BY l.created_at DESC, l.id DESC LIMIT ?""",
             (limit,),
         ) as cur:
             rows = await cur.fetchall()

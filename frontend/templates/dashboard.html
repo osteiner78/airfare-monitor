@@ -31,7 +31,7 @@
                 if (!raw) { if (tag) tag.style.display = "none"; return; }
                 var data = JSON.parse(raw);
                 if (data.filtered && data.price !== null) {
-                    priceEl.textContent = data.price.toFixed(2) + " " + data.currency;
+                    priceEl.textContent = data.currency + data.price.toFixed(2);
                     if (tag) tag.style.display = "";
                 } else {
                     if (tag) tag.style.display = "none";

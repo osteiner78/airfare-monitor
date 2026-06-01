@@ -101,7 +101,7 @@
         var bestEl = document.getElementById("detail-best-price");
         if (bestEl) {
             if (survivors.length > 0) {
-                bestEl.textContent = "Best now: " + survivors[0].price.toFixed(2) + " " + currency +
+                bestEl.textContent = "Best now: " + currency + survivors[0].price.toFixed(2) +
                     (isFiltered ? " (filtered)" : "");
             } else {
                 bestEl.textContent = "Best now: —";

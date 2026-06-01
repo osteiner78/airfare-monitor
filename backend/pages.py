@@ -110,8 +110,8 @@ def _airline_code(flight_number: str | None) -> str:
 
 _env.filters["airline_code"] = _airline_code
 
-_CURRENCY_SYMBOLS: dict[str, str] = {"EUR": "€", "USD": "$", "GBP": "£", "CHF": "Fr."}
-_env.filters["currency_symbol"] = lambda c: _CURRENCY_SYMBOLS.get(c or "", c or "")
+_CURRENCY_SYMBOLS: dict[str, str] = {"EUR": "€", "USD": "$", "GBP": "£", "CHF": "CHF "}
+_env.filters["currency_symbol"] = lambda c: _CURRENCY_SYMBOLS.get(c or "", (c or "") + " ")
 
 
 def _split_timestamps(flight_dict: dict) -> None:

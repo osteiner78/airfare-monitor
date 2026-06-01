@@ -7,10 +7,10 @@
             </div>
             <div class="detail-prices">
                 {% if best_price is not none %}
-                <div class="detail-best" id="detail-best-price">Best now: {{ "%.2f"|format(best_price) }} {{ tracker.currency | currency_symbol }}</div>
+                <div class="detail-best" id="detail-best-price">Best now: {{ tracker.currency | currency_symbol }}{{ "%.2f"|format(best_price) }}</div>
                 {% endif %}
                 {% if historical_best_price is not none %}
-                <div class="detail-historical">Historical best: {{ "%.2f"|format(historical_best_price) }} {{ tracker.currency | currency_symbol }}</div>
+                <div class="detail-historical">Historical best: {{ tracker.currency | currency_symbol }}{{ "%.2f"|format(historical_best_price) }}</div>
                 {% endif %}
             </div>
         </div>
@@ -73,7 +73,7 @@
                     <label class="airline-row">
                         <input type="checkbox" class="filter-airline" value="{{ a.name }}" checked>
                         <span class="airline-name">{{ a.name or "Unknown" }} <small class="airline-count">({{ a.count }})</small></span>
-                        <span class="airline-price">{{ "%.2f"|format(a.best_price) }} {{ tracker.currency | currency_symbol }}</span>
+                        <span class="airline-price">{{ tracker.currency | currency_symbol }}{{ "%.2f"|format(a.best_price) }}</span>
                     </label>
                     {% endfor %}
                 </div>
@@ -114,4 +114,4 @@
 <script>window.trackerId = {{ tracker.id }};</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
 <script src="/static/charts.js?v=012"></script>
-<script src="/static/filters.js?v=016"></script>
+<script src="/static/filters.js?v=017"></script>

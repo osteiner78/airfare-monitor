@@ -80,8 +80,8 @@ window.renderPriceChart = function (datasets) {
                                    d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
                         },
                         label: function (ctx) {
-                            var currency = window.chartCurrency ? " " + window.chartCurrency : "";
-                            return ctx.dataset.label + ": " + ctx.parsed.y + currency;
+                            var currency = window.chartCurrency || "";
+                            return ctx.dataset.label + ": " + currency + ctx.parsed.y.toFixed(2);
                         },
                     },
                 },
