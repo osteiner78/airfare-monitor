@@ -5,7 +5,7 @@ from datetime import datetime
 import backend.scheduler
 import httpx
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from backend.db import (
@@ -48,18 +48,21 @@ router = APIRouter()
 _logo_cache: dict[str, bytes | None] = {}
 
 
+_CDN = "https://images.kiwi.com/airlines/128"
+
+
 @router.get("/airline-logo/{code}")
 async def airline_logo_proxy(code: str):
     code = code.upper()
     if code in _logo_cache:
         data = _logo_cache[code]
         if data is None:
-            raise HTTPException(status_code=404)
+            return RedirectResponse(url=f"{_CDN}/{code}.png", status_code=302)
         return Response(content=data, media_type="image/png",
                         headers={"Cache-Control": "public, max-age=86400"})
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(f"https://images.kiwi.com/airlines/128/{code}.png")
+            resp = await client.get(f"{_CDN}/{code}.png")
         if resp.status_code == 200:
             _logo_cache[code] = resp.content
             return Response(content=resp.content,
@@ -68,7 +71,7 @@ async def airline_logo_proxy(code: str):
     except Exception:
         pass
     _logo_cache[code] = None
-    raise HTTPException(status_code=404)
+    return RedirectResponse(url=f"{_CDN}/{code}.png", status_code=302)
 
 
 def _render(name: str, context: dict) -> HTMLResponse:
