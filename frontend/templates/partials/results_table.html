@@ -16,7 +16,10 @@
     </thead>
     <tbody>
         {% for item in flights_with_delta %}
-        <tr class="{% if item.delta and item.delta.type == 'missing' %}row-missing{% endif %}">
+        {% set row_color = (flight_key_colors or {}).get(item.flight.flight_key) %}
+        <tr data-flight-key="{{ item.flight.flight_key }}"
+            class="{% if item.delta and item.delta.type == 'missing' %}row-missing{% endif %}{% if row_color %} row-colored{% endif %}"
+            {% if row_color %}style="--row-color: {{ row_color }}"{% endif %}>
             <td>{{ airline_logo(item.flight.flight_number, item.flight.airline) }}</td>
             <td>{{ item.flight.flight_number or "—" }}</td>
             <td>{{ item.flight.get("departure_time_date", item.flight.get("departure_time", "—")) }}</td>
