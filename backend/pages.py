@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime
 
 import backend.scheduler
@@ -51,6 +52,24 @@ def _format_date(date_str: str) -> str:
 
 
 _env.filters["format_date"] = _format_date
+
+LOGO_UNAVAILABLE_CODES: set[str] = set()
+
+_IATA_RE = re.compile(r"^[A-Z0-9]{2}$")
+
+
+def _airline_code(flight_number: str | None) -> str:
+    if not flight_number:
+        return ""
+    token = str(flight_number).strip().split(" ", 1)[0].upper()
+    if not _IATA_RE.match(token):
+        return ""
+    if token in LOGO_UNAVAILABLE_CODES:
+        return ""
+    return token
+
+
+_env.filters["airline_code"] = _airline_code
 
 
 def _split_timestamps(flight_dict: dict) -> None:
