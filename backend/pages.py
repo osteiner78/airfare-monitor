@@ -239,13 +239,34 @@ async def _build_detail_context(tracker_id: int) -> dict:
     for key, entry in chart_datasets.items():
         entry["color"] = flight_key_colors[key]
 
+    # group history by flight_key for chart datasets and all_flights
+    history_by_key: dict[str, list] = {}
     for row in history:
         key = row["flight_key"]
-        if key not in chart_datasets:
-            continue
-        chart_datasets[key]["data"].append({
+        if key not in history_by_key:
+            history_by_key[key] = []
+        history_by_key[key].append({
             "x": row["searched_at"].replace(" ", "T"),
             "y": row["price"],
+        })
+
+    for key, entry in chart_datasets.items():
+        entry["data"] = history_by_key.get(key, [])
+
+    all_flights = []
+    for f in flights_with_delta:
+        if f.get("delta", {}).get("type") == "missing":
+            continue
+        flight = f["flight"]
+        key = flight["flight_key"]
+        label = (flight.get("flight_number") or "").strip() or flight.get("airline", "") or key
+        all_flights.append({
+            "flight_key": key,
+            "label": label,
+            "price": flight["price"],
+            "stops": flight.get("stops"),
+            "duration_min": flight.get("duration_min"),
+            "data": history_by_key.get(key, []),
         })
 
     best_price = min((f["flight"]["price"] for f in flights_with_delta if f.get("delta", {}).get("type") != "missing"), default=None)
@@ -256,6 +277,7 @@ async def _build_detail_context(tracker_id: int) -> dict:
         "latest_snapshot": latest,
         "flights_with_delta": flights_with_delta,
         "chart_datasets": json.dumps(list(chart_datasets.values())),
+        "all_flights": json.dumps(all_flights),
         "flight_key_colors": flight_key_colors,
         "best_price": best_price,
         "historical_best_price": historical_best_price,
