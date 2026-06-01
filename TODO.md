@@ -1,7 +1,7 @@
 # TODO
 
 ## Bugs
-- [ ] **`GET /api/trackers` returns `active` as int** — list endpoint bypasses `TrackerResponse` Pydantic model, serializes `active` as `1`/`0` instead of `true`/`false`.
+- [X] **`GET /api/trackers` returns `active` as int** — list endpoint bypasses `TrackerResponse` Pydantic model, serializes `active` as `1`/`0` instead of `true`/`false`.
 
 ## Improvements
 - [ ] **Design polish** — pass through Claude Design for UI/UX improvements.
@@ -10,26 +10,24 @@
 
 
 ### Dashboard
-- [ ] **Trackers list**: Include historical best price
+- [x] **Trackers list**: Include historical best price
 
 
 
 ### Tracker details
 
 #### Tracker details box
-- [ ] **Details box**: move ACTIVE badge and pause+delete buttons to the right side. Leave Google Flighs and Search Now button on the right side
+- [x] **Details box**: move ACTIVE badge and pause+delete buttons to the right side. Leave Google Flighs and Search Now button on the right side
 
 #### Chart
-- [] **Fix chart tooltip** — change times to local times, add currency to price
+- [x]] **Fix chart tooltip** — change times to local times, add currency to price
 - [x] **Fix chart tooltip** — tooltip shows raw price without currency symbol and uses epoch timestamps. Should show formatted date + currency (e.g., "May 31 19:44 — 102.00 EUR").
 
 #### Table
-- [ ] Change "Current Results" to "Last prices fetched (<time> ago)"
+- [x] Change "Current Results" to "Last prices fetched (<time> ago)"
 - [ ] Add a selection box besides all flights, when checked it adds it to the chart -> will require storing historical prices for all flights
-- [ ] **Remove Arrival Date**: leave only departure date. If arrival date is next day, add string "(+1 day)" beside the arrival time
+- [x] **Remove Arrival Date**: leave only departure date. If arrival date is next day, add string "(+1 day)" beside the arrival time
 - [ ] **Fetch per-flight booking URLs** — using fli's `get_booking_options()`.
-
-
 
 
 ## Future (v2)

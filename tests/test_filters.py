@@ -245,3 +245,219 @@ async def test_duration_slider_max_is_zero_when_all_durations_null(client):
     assert response.status_code == 200
     assert 'id="filter-duration"' in response.text
     assert 'max="0"' in response.text
+
+
+# ===========================================================================
+# Plan 011 — airline filter
+#
+# Phase 1 (data contract): airline on window.allFlights + data-airline per row.
+#   -> these assert on the JS global / row markup; FAIL before phase 1.
+# Phase 2 (sidebar UI): the airline checklist rendered inside <aside
+#   class="filter-sidebar">. The facet assertions (count / best price / sort /
+#   distinct) need that markup, so they FAIL until phase 2 lands.
+#
+# Markup contract for the airline checklist (one per airline, cheapest first):
+#   <input type="checkbox" class="filter-airline" value="{name}" checked>
+#   ... visible "{name or 'Unknown'}" ... "({count})" ... "{best:.2f} {currency}"
+# ===========================================================================
+
+
+def _sidebar(text: str) -> str:
+    """Return only the filter-sidebar <aside> body, so facet assertions can't be
+    satisfied by coincidental matches in the results table (which repeats prices
+    and stop counts)."""
+    match = re.search(r'<aside class="filter-sidebar">(.*?)</aside>', text, re.DOTALL)
+    return match.group(1) if match else ""
+
+
+# --- Phase 1: data contract -------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_all_flights_entry_includes_airline(client):
+    from backend.db import create_snapshot, insert_flight_prices
+    await _make_tracker(client)
+    snap = await create_snapshot(1, results_count=1)
+    await insert_flight_prices(snap["id"], 1, [
+        _price("test|VY|6201|2026-01-01T00:00:00", 100, airline="Vueling"),
+    ])
+
+    response = await client.get("/trackers/1")
+    all_flights = _extract_js_global(response.text, "allFlights")
+    assert all_flights is not None, "window.allFlights not emitted"
+    assert all_flights[0].get("airline") == "Vueling"
+
+
+@pytest.mark.asyncio
+async def test_row_carries_data_airline_attribute(client):
+    from backend.db import create_snapshot, insert_flight_prices
+    await _make_tracker(client)
+    snap = await create_snapshot(1, results_count=1)
+    await insert_flight_prices(snap["id"], 1, [
+        _price("test|VY|6201|2026-01-01T00:00:00", 100, airline="Vueling"),
+    ])
+
+    response = await client.get("/trackers/1")
+    assert 'data-airline="Vueling"' in response.text
+
+
+@pytest.mark.asyncio
+async def test_null_airline_row_renders_empty_data_airline(client):
+    # FAILURE-MODE: flight with no airline must render data-airline="" and not crash.
+    from backend.db import create_snapshot, insert_flight_prices
+    await _make_tracker(client)
+    snap = await create_snapshot(1, results_count=1)
+    await insert_flight_prices(snap["id"], 1, [
+        _price("test|VY|6201|2026-01-01T00:00:00", 100, airline=None),
+    ])
+
+    response = await client.get("/trackers/1")
+    assert response.status_code == 200
+    assert 'data-airline=""' in response.text
+
+
+@pytest.mark.asyncio
+async def test_airline_with_ampersand_is_escaped_in_data_attribute(client):
+    # FAILURE-MODE: special chars in an airline name must be HTML-escaped, not break the attr.
+    from backend.db import create_snapshot, insert_flight_prices
+    await _make_tracker(client)
+    snap = await create_snapshot(1, results_count=1)
+    await insert_flight_prices(snap["id"], 1, [
+        _price("test|VY|6201|2026-01-01T00:00:00", 100, airline="AB & CO"),
+    ])
+
+    response = await client.get("/trackers/1")
+    assert 'data-airline="AB &amp; CO"' in response.text
+
+
+# --- Phase 2: sidebar airline checklist ------------------------------------
+
+@pytest.mark.asyncio
+async def test_sidebar_renders_one_airline_checkbox_per_distinct_airline(client):
+    from backend.db import create_snapshot, insert_flight_prices
+    await _make_tracker(client)
+    snap = await create_snapshot(1, results_count=3)
+    await insert_flight_prices(snap["id"], 1, [
+        _price("test|VY|1|2026-01-01T00:00:00", 100, airline="Vueling"),
+        _price("test|VY|2|2026-01-01T00:00:00", 110, airline="Vueling"),
+        _price("test|IB|3|2026-01-01T00:00:00", 120, airline="Iberia"),
+    ])
+
+    response = await client.get("/trackers/1")
+    sidebar = _sidebar(response.text)
+    assert len(re.findall(r'class="filter-airline"', sidebar)) == 2
+
+
+@pytest.mark.asyncio
+async def test_airline_checkbox_value_is_airline_name(client):
+    from backend.db import create_snapshot, insert_flight_prices
+    await _make_tracker(client)
+    snap = await create_snapshot(1, results_count=1)
+    await insert_flight_prices(snap["id"], 1, [
+        _price("test|VY|6201|2026-01-01T00:00:00", 100, airline="Vueling"),
+    ])
+
+    response = await client.get("/trackers/1")
+    assert 'class="filter-airline" value="Vueling"' in _sidebar(response.text)
+
+
+@pytest.mark.asyncio
+async def test_every_airline_checkbox_is_checked_by_default(client):
+    from backend.db import create_snapshot, insert_flight_prices
+    await _make_tracker(client)
+    snap = await create_snapshot(1, results_count=2)
+    await insert_flight_prices(snap["id"], 1, [
+        _price("test|VY|1|2026-01-01T00:00:00", 100, airline="Vueling"),
+        _price("test|IB|2|2026-01-01T00:00:00", 120, airline="Iberia"),
+    ])
+
+    response = await client.get("/trackers/1")
+    inputs = re.findall(r'<input[^>]*class="filter-airline"[^>]*>', _sidebar(response.text))
+    assert inputs and all("checked" in i for i in inputs)
+
+
+@pytest.mark.asyncio
+async def test_airline_count_reflects_flights_per_airline(client):
+    from backend.db import create_snapshot, insert_flight_prices
+    await _make_tracker(client)
+    snap = await create_snapshot(1, results_count=3)
+    await insert_flight_prices(snap["id"], 1, [
+        _price("test|VY|1|2026-01-01T00:00:00", 100, airline="Vueling"),
+        _price("test|VY|2|2026-01-01T00:00:00", 110, airline="Vueling"),
+        _price("test|IB|3|2026-01-01T00:00:00", 120, airline="Iberia"),
+    ])
+
+    response = await client.get("/trackers/1")
+    sidebar = _sidebar(response.text)
+    assert "(2)" in sidebar  # Vueling
+    assert "(1)" in sidebar  # Iberia
+
+
+@pytest.mark.asyncio
+async def test_airline_best_price_is_min_within_airline(client):
+    from backend.db import create_snapshot, insert_flight_prices
+    await _make_tracker(client)
+    snap = await create_snapshot(1, results_count=2)
+    await insert_flight_prices(snap["id"], 1, [
+        _price("test|VY|1|2026-01-01T00:00:00", 120, airline="Vueling"),
+        _price("test|VY|2|2026-01-01T00:00:00", 90, airline="Vueling"),
+    ])
+
+    response = await client.get("/trackers/1")
+    sidebar = _sidebar(response.text)
+    assert "90.00 EUR" in sidebar
+    assert "120.00" not in sidebar
+
+
+@pytest.mark.asyncio
+async def test_airlines_sorted_by_best_price_ascending(client):
+    from backend.db import create_snapshot, insert_flight_prices
+    await _make_tracker(client)
+    snap = await create_snapshot(1, results_count=2)
+    await insert_flight_prices(snap["id"], 1, [
+        _price("test|IB|1|2026-01-01T00:00:00", 200, airline="Iberia"),
+        _price("test|VY|2|2026-01-01T00:00:00", 90, airline="Vueling"),
+    ])
+
+    response = await client.get("/trackers/1")
+    sidebar = _sidebar(response.text)
+    assert sidebar.index('value="Vueling"') < sidebar.index('value="Iberia"')
+
+
+@pytest.mark.asyncio
+async def test_duplicate_airline_deduped_to_single_entry(client):
+    # FAILURE-MODE / off-by-one: two flights, same airline -> exactly one checkbox.
+    from backend.db import create_snapshot, insert_flight_prices
+    await _make_tracker(client)
+    snap = await create_snapshot(1, results_count=2)
+    await insert_flight_prices(snap["id"], 1, [
+        _price("test|VY|1|2026-01-01T00:00:00", 100, airline="Vueling"),
+        _price("test|VY|2|2026-01-01T00:00:00", 110, airline="Vueling"),
+    ])
+
+    response = await client.get("/trackers/1")
+    assert len(re.findall(r'class="filter-airline"', _sidebar(response.text))) == 1
+
+
+@pytest.mark.asyncio
+async def test_null_airline_renders_unknown_label_in_sidebar(client):
+    # FAILURE-MODE: a null-airline flight gets an empty-value checkbox labeled "Unknown".
+    from backend.db import create_snapshot, insert_flight_prices
+    await _make_tracker(client)
+    snap = await create_snapshot(1, results_count=1)
+    await insert_flight_prices(snap["id"], 1, [
+        _price("test|VY|6201|2026-01-01T00:00:00", 100, airline=None),
+    ])
+
+    response = await client.get("/trackers/1")
+    sidebar = _sidebar(response.text)
+    assert 'class="filter-airline" value=""' in sidebar
+    assert "Unknown" in sidebar
+
+
+@pytest.mark.asyncio
+async def test_no_airline_checkbox_when_no_snapshot(client):
+    # EDGE: unsearched tracker has no sidebar at all -> no airline checkboxes, no crash.
+    await _make_tracker(client)
+    response = await client.get("/trackers/1")
+    assert response.status_code == 200
+    assert 'class="filter-airline"' not in response.text
