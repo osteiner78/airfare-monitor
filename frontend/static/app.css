@@ -766,6 +766,23 @@ h1 {
     overflow-y: auto;
 }
 
+.airline-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 0.35rem;
+}
+
+.airline-action-link {
+    font-size: 0.75rem;
+    color: #4a90d9;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.airline-action-link:hover {
+    text-decoration: underline;
+}
+
 .airline-list {
     max-height: 180px;
     overflow-y: auto;
@@ -790,6 +807,11 @@ h1 {
 .airline-count {
     color: #999;
     font-size: 0.75rem;
+}
+
+.airline-row.airline-disabled {
+    opacity: 0.4;
+    pointer-events: none;
 }
 
 .airline-price {

@@ -64,6 +64,10 @@
             {% if airlines %}
             <div class="filter-group filter-airlines">
                 <label>Airlines</label>
+                <div class="airline-actions">
+                    <a href="#" class="airline-action-link" id="airline-select-all">Select all</a>
+                    <a href="#" class="airline-action-link" id="airline-clear">Clear</a>
+                </div>
                 <div class="airline-list">
                     {% for a in airlines %}
                     <label class="airline-row">
@@ -110,4 +114,4 @@
 <script>window.trackerId = {{ tracker.id }};</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
 <script src="/static/charts.js?v=012"></script>
-<script src="/static/filters.js?v=014"></script>
+<script src="/static/filters.js?v=015"></script>

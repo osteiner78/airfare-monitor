@@ -4,21 +4,26 @@
         "#1abc9c", "#f39c12", "#3498db", "#e91e63", "#00bcd4",
     ];
 
+    // Tracks the user's explicit airline choices (not filter-forced unchecks).
+    // Keyed by checkbox value. Reset and repopulated on each init().
+    var userAirlineState = {};
+
     function saveFilterState() {
         var trackerId = window.trackerId;
         if (trackerId == null) return;
         var stopsEl = document.getElementById("filter-stops");
         var durationEl = document.getElementById("filter-duration");
         if (!stopsEl || !durationEl) return;
-        var airlines = [];
-        document.querySelectorAll(".filter-airline").forEach(function (cb) {
-            if (cb.checked) airlines.push(cb.value);
+        // Save user's explicit choices, not DOM state (greyed airlines are force-unchecked
+        // but the user's intent should survive filter changes).
+        var checkedAirlines = Object.keys(userAirlineState).filter(function (v) {
+            return userAirlineState[v] !== false;
         });
         try {
             localStorage.setItem("filterState_" + trackerId, JSON.stringify({
                 stops: stopsEl.value,
                 duration: durationEl.value,
-                airlines: airlines,
+                airlines: checkedAirlines,
             }));
         } catch (e) {}
     }
@@ -43,7 +48,28 @@
         var maxStops = stopsEl.value === "" ? Infinity : parseInt(stopsEl.value, 10);
         var maxDuration = parseInt(durationEl.value, 10);
 
+        // Which airlines have at least one flight passing stops + duration (ignoring airline filter).
+        var availableAirlines = new Set();
+        allFlights.forEach(function (f) {
+            var stopsOk = (f.stops == null) || f.stops <= maxStops;
+            var durationOk = (f.duration_min == null) || f.duration_min <= maxDuration;
+            if (stopsOk && durationOk) availableAirlines.add(f.airline || "");
+        });
+
+        // Update airline checkbox availability: grey + uncheck unavailable; restore available.
         var airlineCheckboxes = document.querySelectorAll(".filter-airline");
+        airlineCheckboxes.forEach(function (cb) {
+            var row = cb.closest(".airline-row");
+            if (availableAirlines.has(cb.value)) {
+                if (row) row.classList.remove("airline-disabled");
+                cb.checked = (cb.value in userAirlineState) ? userAirlineState[cb.value] : true;
+            } else {
+                if (row) row.classList.add("airline-disabled");
+                cb.checked = false;
+            }
+        });
+
+        // Build selectedAirlines from the now-updated checkbox states.
         var selectedAirlines = null;
         if (airlineCheckboxes.length > 0) {
             selectedAirlines = new Set();
@@ -67,7 +93,7 @@
         var currency = window.chartCurrency || "";
         var trackerId = window.trackerId;
 
-        // Update "Best now" in detail header
+        // Update "Best now" in detail header.
         var bestEl = document.getElementById("detail-best-price");
         if (bestEl) {
             if (survivors.length > 0) {
@@ -78,7 +104,7 @@
             }
         }
 
-        // Persist filtered best price for dashboard cards
+        // Persist filtered best price for dashboard cards.
         if (trackerId != null) {
             try {
                 localStorage.setItem("filteredBest_" + trackerId, JSON.stringify({
@@ -89,7 +115,6 @@
             } catch (e) {}
         }
 
-        // Save current filter state
         saveFilterState();
 
         var colorByKey = {};
@@ -140,7 +165,7 @@
 
         if (!stopsEl || !durationEl) return;
 
-        // Restore saved filter state
+        // Restore saved filter state.
         var saved = loadFilterState();
         if (saved) {
             stopsEl.value = saved.stops;
@@ -154,6 +179,16 @@
             }
         }
 
+        // Initialise userAirlineState from the current (possibly restored) checkbox states.
+        userAirlineState = {};
+        document.querySelectorAll(".filter-airline").forEach(function (cb) {
+            userAirlineState[cb.value] = cb.checked;
+            cb.addEventListener("change", function () {
+                userAirlineState[cb.value] = cb.checked;
+                applyFilters();
+            });
+        });
+
         stopsEl.addEventListener("change", applyFilters);
 
         durationEl.addEventListener("input", function () {
@@ -161,9 +196,31 @@
             applyFilters();
         });
 
-        document.querySelectorAll(".filter-airline").forEach(function (cb) {
-            cb.addEventListener("change", applyFilters);
-        });
+        var selectAllBtn = document.getElementById("airline-select-all");
+        var clearBtn = document.getElementById("airline-clear");
+
+        if (selectAllBtn) {
+            selectAllBtn.addEventListener("click", function (e) {
+                e.preventDefault();
+                document.querySelectorAll(".filter-airline").forEach(function (cb) {
+                    userAirlineState[cb.value] = true;
+                    var row = cb.closest(".airline-row");
+                    if (!row || !row.classList.contains("airline-disabled")) cb.checked = true;
+                });
+                applyFilters();
+            });
+        }
+
+        if (clearBtn) {
+            clearBtn.addEventListener("click", function (e) {
+                e.preventDefault();
+                document.querySelectorAll(".filter-airline").forEach(function (cb) {
+                    userAirlineState[cb.value] = false;
+                    cb.checked = false;
+                });
+                applyFilters();
+            });
+        }
 
         if (resetBtn) {
             resetBtn.addEventListener("click", function () {
@@ -171,6 +228,7 @@
                 durationEl.value = durationEl.max;
                 if (durationLabel) durationLabel.textContent = formatDuration(parseInt(durationEl.max, 10));
                 document.querySelectorAll(".filter-airline").forEach(function (cb) {
+                    userAirlineState[cb.value] = true;
                     cb.checked = true;
                 });
                 applyFilters();
