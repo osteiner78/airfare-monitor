@@ -1,3 +1,4 @@
+{% from "partials/macros.html" import airline_logo %}
 <div class="tracker-card" id="card-{{ tracker.id }}">
     <div class="card-clickable"
          hx-get="/trackers/{{ tracker.id }}"
@@ -6,33 +7,36 @@
          hx-swap="innerHTML">
         <div class="card-header">
             <span class="route">{{ tracker.origin }} &rarr; {{ tracker.destination }}</span>
-            <span class="best-price">
-                {% if tracker.best_price is not none %}
-                    {{ "%.2f"|format(tracker.best_price) }} {{ tracker.currency }}
-                {% else %}
-                    &mdash;
+            {{ airline_logo(tracker.best_flight_number, tracker.best_flight_number) }}
+            <div class="card-price-col">
+                <span class="best-price">
+                    {% if tracker.best_price is not none %}
+                        {{ "%.2f"|format(tracker.best_price) }} {{ tracker.currency }}
+                    {% else %}
+                        &mdash;
+                    {% endif %}
+                </span>
+                {% if tracker.price_delta %}
+                <span class="card-delta {% if tracker.price_delta.type == 'down' %}down{% elif tracker.price_delta.type == 'up' %}up{% elif tracker.price_delta.type == 'same' %}same{% endif %}">
+                    {% if tracker.price_delta.type == 'down' %}&darr; -{{ "%.2f"|format(tracker.price_delta.amount) }} {{ tracker.currency }}
+                    {% elif tracker.price_delta.type == 'up' %}&uarr; +{{ "%.2f"|format(tracker.price_delta.amount) }} {{ tracker.currency }}
+                    {% elif tracker.price_delta.type == 'same' %}no change
+                    {% endif %}
+                </span>
                 {% endif %}
-            </span>
+            </div>
         </div>
         <div class="card-body">
             <span class="date">{{ tracker.depart_date | format_date }}</span>
+        </div>
+    </div>
+    <div class="card-footer">
+        <div class="card-status-left">
             <span class="badge {% if tracker.active %}active{% else %}paused{% endif %}">
                 {{ "Active" if tracker.active else "Paused" }}
             </span>
             {% if tracker.recent_alerts and tracker.recent_alerts > 0 %}
             <span class="badge alert-count">{{ tracker.recent_alerts }}</span>
-            {% endif %}
-        </div>
-    </div>
-    <div class="card-footer">
-        <div class="card-left">
-            {% if tracker.price_delta %}
-            <span class="card-delta {% if tracker.price_delta.type == 'down' %}down{% elif tracker.price_delta.type == 'up' %}up{% elif tracker.price_delta.type == 'same' %}same{% endif %}">
-                {% if tracker.price_delta.type == 'down' %}&darr; -{{ "%.2f"|format(tracker.price_delta.amount) }} {{ tracker.currency }}
-                {% elif tracker.price_delta.type == 'up' %}&uarr; +{{ "%.2f"|format(tracker.price_delta.amount) }} {{ tracker.currency }}
-                {% elif tracker.price_delta.type == 'same' %}no change
-                {% endif %}
-            </span>
             {% endif %}
             <span class="last-checked" data-iso="{{ tracker.last_searched_at or '' }}">
                 {% if tracker.last_searched_at %}

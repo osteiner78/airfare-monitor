@@ -289,7 +289,15 @@ async def get_tracker_summaries() -> list:
                       (SELECT COUNT(*) FROM notification_log
                        WHERE tracker_id = t.id
                          AND triggered_at > datetime('now', '-1 day')
-                      ) AS recent_alerts
+                      ) AS recent_alerts,
+                      (SELECT fp.flight_number
+                       FROM flight_prices fp
+                       WHERE fp.tracker_id = t.id
+                         AND fp.snapshot_id = (SELECT id FROM snapshots
+                                               WHERE tracker_id = t.id
+                                               ORDER BY searched_at DESC LIMIT 1)
+                       ORDER BY fp.price ASC LIMIT 1
+                      ) AS best_flight_number
                FROM trackers t
                ORDER BY t.id""",
         ) as cur:
