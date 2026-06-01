@@ -89,9 +89,13 @@
         survivors.sort(function (a, b) { return a.price - b.price; });
         var topSurvivors = survivors.slice(0, topN);
 
-        var isFiltered = survivors.length < allFlights.length;
         var currency = window.chartCurrency || "";
         var trackerId = window.trackerId;
+
+        // "(filtered)" only when the filtered best is strictly higher than the unfiltered best.
+        var unfilteredBest = allFlights.reduce(function (m, f) { return f.price < m ? f.price : m; }, Infinity);
+        var filteredBestPrice = survivors.length > 0 ? survivors[0].price : null;
+        var isFiltered = filteredBestPrice !== null && isFinite(unfilteredBest) && filteredBestPrice > unfilteredBest;
 
         // Update "Best now" in detail header.
         var bestEl = document.getElementById("detail-best-price");
@@ -100,7 +104,7 @@
                 bestEl.textContent = "Best now: " + survivors[0].price.toFixed(2) + " " + currency +
                     (isFiltered ? " (filtered)" : "");
             } else {
-                bestEl.textContent = "Best now: — (filtered)";
+                bestEl.textContent = "Best now: —";
             }
         }
 

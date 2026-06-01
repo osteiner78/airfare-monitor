@@ -456,7 +456,12 @@ async def get_db_stats() -> dict:
         async with db.execute("SELECT COUNT(*) FROM flight_prices") as cur:
             row = await cur.fetchone()
             prices = row[0]
-    return {"snapshots": snapshots, "prices": prices, "path": db_path}
+    size_bytes = os.path.getsize(db_path) if os.path.exists(db_path) else 0
+    if size_bytes >= 1024 * 1024:
+        size_str = f"{size_bytes / (1024 * 1024):.1f} MB"
+    else:
+        size_str = f"{size_bytes / 1024:.0f} KB"
+    return {"snapshots": snapshots, "prices": prices, "path": db_path, "size_str": size_str}
 
 
 async def get_recent_logs(limit: int = 50) -> list:

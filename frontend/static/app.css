@@ -648,14 +648,25 @@ h1 {
     font-weight: 400;
 }
 
+.logs-scroll-wrap {
+    max-height: 70vh;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}
+
 .logs-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 0.8125rem;
     background: #fff;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    overflow: hidden;
+}
+
+.logs-scroll-wrap .logs-table thead th {
+    position: sticky;
+    top: 0;
+    background: #f9f9f9;
+    z-index: 1;
 }
 
 .logs-table th {

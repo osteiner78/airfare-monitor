@@ -110,6 +110,9 @@ def _airline_code(flight_number: str | None) -> str:
 
 _env.filters["airline_code"] = _airline_code
 
+_CURRENCY_SYMBOLS: dict[str, str] = {"EUR": "€", "USD": "$", "GBP": "£", "CHF": "Fr."}
+_env.filters["currency_symbol"] = lambda c: _CURRENCY_SYMBOLS.get(c or "", c or "")
+
 
 def _split_timestamps(flight_dict: dict) -> None:
     raw_dates: dict[str, str] = {}
@@ -414,7 +417,7 @@ async def refresh_all(request: Request):
 
 @router.get("/monitor", response_class=HTMLResponse)
 async def monitor_page(request: Request):
-    logs = await get_recent_logs(limit=50)
+    logs = await get_recent_logs(limit=500)
     tracker_stats = await get_tracker_stats()
     db_stats = await get_db_stats()
     return _render("monitor.html", {
@@ -427,5 +430,5 @@ async def monitor_page(request: Request):
 
 @router.get("/monitor/logs", response_class=HTMLResponse)
 async def monitor_logs():
-    logs = await get_recent_logs(limit=50)
+    logs = await get_recent_logs(limit=500)
     return _render("partials/monitor_logs.html", {"logs": logs})

@@ -404,7 +404,7 @@ async def test_airline_best_price_is_min_within_airline(client):
 
     response = await client.get("/trackers/1")
     sidebar = _sidebar(response.text)
-    assert "90.00 EUR" in sidebar
+    assert "90.00 €" in sidebar
     assert "120.00" not in sidebar
 
 

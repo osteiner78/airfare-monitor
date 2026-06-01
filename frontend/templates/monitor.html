@@ -21,10 +21,15 @@
             <span class="stat-value">{{ "{:,}".format(db_stats.snapshots) }}</span>
             <span class="stat-label">Snapshots</span>
         </div>
+        <div class="stat-card">
+            <span class="stat-value">{{ db_stats.size_str }}</span>
+            <span class="stat-label">DB Size</span>
+        </div>
     </div>
 
     <div class="logs-section">
         <h2>System Logs <span class="auto-refresh-note">(auto-refresh every 30s)</span></h2>
+        <div class="logs-scroll-wrap">
         <table class="logs-table">
             <thead>
                 <tr>
@@ -41,6 +46,7 @@
             {% include "partials/monitor_logs.html" %}
             </tbody>
         </table>
+        </div>
         <span id="logs-spinner" class="htmx-indicator">Refreshing...</span>
     </div>
 </div>
