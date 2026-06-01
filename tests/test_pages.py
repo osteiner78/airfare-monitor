@@ -185,7 +185,7 @@ async def test_results_table_renders_kiwi_logo_for_valid_code(client):
         "stops": 0,
     }])
     response = await client.get("/trackers/1")
-    assert "images.kiwi.com/airlines/128/VY.png" in response.text
+    assert "/airline-logo/VY" in response.text
 
 
 @pytest.mark.asyncio
@@ -257,7 +257,7 @@ async def test_dashboard_card_renders_logo_for_best_flight(client):
         },
     ])
     response = await client.get("/")
-    assert "images.kiwi.com/airlines/128/LH.png" in response.text
+    assert "/airline-logo/LH" in response.text
 
 
 # --- Plan 009: results-table row colors match chart line colors ---
