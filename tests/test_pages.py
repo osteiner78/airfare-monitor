@@ -163,3 +163,98 @@ async def test_detail_page_does_not_embed_full_html_in_detail_content(client):
     response = await client.post("/trackers/1/search")
     text = response.text
     assert text.count("<html") == 0
+
+
+# --- Phase 2: results table logo ---
+
+@pytest.mark.asyncio
+async def test_results_table_renders_kiwi_logo_for_valid_code(client):
+    from backend.db import create_snapshot, insert_flight_prices
+    await client.post("/api/trackers", json=TRACKER_FORM)
+    snapshot = await create_snapshot(1, results_count=1)
+    await insert_flight_prices(snapshot["id"], 1, [{
+        "flight_key": "test|Vueling|VY6201|2026-09-15T10:00:00",
+        "source": "test",
+        "price": 89.0,
+        "currency": "EUR",
+        "airline": "Vueling",
+        "flight_number": "VY 6201",
+        "departure_time": "2026-09-15T10:00:00",
+        "arrival_time": "2026-09-15T11:15:00",
+        "duration_min": 75,
+        "stops": 0,
+    }])
+    response = await client.get("/trackers/1")
+    assert "images.kiwi.com/airlines/64/VY.png" in response.text
+
+
+@pytest.mark.asyncio
+async def test_results_table_logo_alt_is_airline_name(client):
+    from backend.db import create_snapshot, insert_flight_prices
+    await client.post("/api/trackers", json=TRACKER_FORM)
+    snapshot = await create_snapshot(1, results_count=1)
+    await insert_flight_prices(snapshot["id"], 1, [{
+        "flight_key": "test|Vueling|VY6201|2026-09-15T10:00:00",
+        "source": "test",
+        "price": 89.0,
+        "currency": "EUR",
+        "airline": "Vueling",
+        "flight_number": "VY 6201",
+        "departure_time": "2026-09-15T10:00:00",
+        "arrival_time": "2026-09-15T11:15:00",
+        "duration_min": 75,
+        "stops": 0,
+    }])
+    response = await client.get("/trackers/1")
+    assert 'alt="Vueling"' in response.text
+
+
+@pytest.mark.asyncio
+async def test_results_table_falls_back_to_name_when_code_invalid(client):
+    from backend.db import create_snapshot, insert_flight_prices
+    await client.post("/api/trackers", json=TRACKER_FORM)
+    snapshot = await create_snapshot(1, results_count=1)
+    await insert_flight_prices(snapshot["id"], 1, [{
+        "flight_key": "test|XX|123|2026-01-01T00:00:00",
+        "source": "test",
+        "price": 100.0,
+        "currency": "EUR",
+        "airline": "XX",
+        "flight_number": "123",
+        "departure_time": "2026-01-01T10:00:00",
+        "arrival_time": "2026-01-01T12:00:00",
+        "duration_min": 120,
+        "stops": 0,
+    }])
+    response = await client.get("/trackers/1")
+    assert "XX" in response.text
+    assert "images.kiwi.com" not in response.text
+
+
+# --- Phase 3: dashboard card logo ---
+
+@pytest.mark.asyncio
+async def test_dashboard_card_renders_logo_for_best_flight(client):
+    from backend.db import create_snapshot, insert_flight_prices
+    await client.post("/api/trackers", json=TRACKER_FORM)
+    snapshot = await create_snapshot(1, results_count=2)
+    await insert_flight_prices(snapshot["id"], 1, [
+        {
+            "flight_key": "test|Vueling|VY6201|2026-09-15T10:00:00",
+            "source": "test",
+            "price": 150.0,
+            "currency": "EUR",
+            "airline": "Vueling",
+            "flight_number": "VY 6201",
+        },
+        {
+            "flight_key": "test|Lufthansa|LH400|2026-09-15T08:00:00",
+            "source": "test",
+            "price": 120.0,
+            "currency": "EUR",
+            "airline": "Lufthansa",
+            "flight_number": "LH 400",
+        },
+    ])
+    response = await client.get("/")
+    assert "images.kiwi.com/airlines/64/LH.png" in response.text

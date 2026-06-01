@@ -145,3 +145,62 @@ async def test_get_tracker_returns_none_for_negative_id(db_path):
 async def test_delete_tracker_on_missing_id_does_not_raise(db_path):
     from backend.db import delete_tracker
     await delete_tracker(99999)
+
+
+# --- Phase 3: best_flight_number in summaries ---
+
+async def test_summary_includes_best_flight_number_of_cheapest_flight(db_path):
+    from backend.db import create_tracker, create_snapshot, insert_flight_prices, get_tracker_summaries
+    tracker = await create_tracker(origin="GVA", destination="BCN", depart_date="2026-09-15")
+    snapshot = await create_snapshot(tracker["id"], results_count=2)
+    await insert_flight_prices(snapshot["id"], tracker["id"], [
+        {
+            "flight_key": "test|Vueling|VY6201|2026-09-15T10:00:00",
+            "source": "test",
+            "price": 200.0,
+            "currency": "EUR",
+            "flight_number": "VY 6201",
+        },
+        {
+            "flight_key": "test|Lufthansa|LH400|2026-09-15T08:00:00",
+            "source": "test",
+            "price": 100.0,
+            "currency": "EUR",
+            "flight_number": "LH 400",
+        },
+    ])
+    summaries = await get_tracker_summaries()
+    assert len(summaries) == 1
+    assert summaries[0]["best_flight_number"] == "LH 400"
+
+
+async def test_summary_best_flight_number_is_none_without_snapshot(db_path):
+    from backend.db import create_tracker, get_tracker_summaries
+    await create_tracker(origin="GVA", destination="BCN", depart_date="2026-09-15")
+    summaries = await get_tracker_summaries()
+    assert len(summaries) == 1
+    assert summaries[0]["best_flight_number"] is None
+
+
+async def test_summary_still_returns_min_best_price(db_path):
+    from backend.db import create_tracker, create_snapshot, insert_flight_prices, get_tracker_summaries
+    tracker = await create_tracker(origin="GVA", destination="BCN", depart_date="2026-09-15")
+    snapshot = await create_snapshot(tracker["id"], results_count=2)
+    await insert_flight_prices(snapshot["id"], tracker["id"], [
+        {
+            "flight_key": "test|Vueling|VY6201|2026-09-15T10:00:00",
+            "source": "test",
+            "price": 200.0,
+            "currency": "EUR",
+            "flight_number": "VY 6201",
+        },
+        {
+            "flight_key": "test|Lufthansa|LH400|2026-09-15T08:00:00",
+            "source": "test",
+            "price": 100.0,
+            "currency": "EUR",
+            "flight_number": "LH 400",
+        },
+    ])
+    summaries = await get_tracker_summaries()
+    assert summaries[0]["best_price"] == 100.0
