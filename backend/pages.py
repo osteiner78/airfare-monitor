@@ -306,11 +306,22 @@ async def _build_detail_context(tracker_id: int) -> dict:
             "price": flight["price"],
             "stops": flight.get("stops"),
             "duration_min": flight.get("duration_min"),
+            "airline": flight.get("airline"),
             "data": history_by_key.get(key, []),
         })
 
     max_stops = max((f["stops"] for f in all_flights if f.get("stops") is not None), default=0)
     max_duration = max((f["duration_min"] for f in all_flights if f.get("duration_min") is not None), default=0)
+
+    airline_groups: dict[str, dict] = {}
+    for f in all_flights:
+        name = f["airline"] or ""
+        if name not in airline_groups:
+            airline_groups[name] = {"name": name, "count": 0, "best_price": f["price"]}
+        airline_groups[name]["count"] += 1
+        if f["price"] < airline_groups[name]["best_price"]:
+            airline_groups[name]["best_price"] = f["price"]
+    airlines = sorted(airline_groups.values(), key=lambda a: (a["best_price"], a["name"]))
 
     best_price = min((f["flight"]["price"] for f in flights_with_delta if f.get("delta", {}).get("type") != "missing"), default=None)
     historical_best_price = await get_historical_best_price(tracker_id)
@@ -326,6 +337,7 @@ async def _build_detail_context(tracker_id: int) -> dict:
         "max_duration": max_duration,
         "best_price": best_price,
         "historical_best_price": historical_best_price,
+        "airlines": airlines,
     }
 
 

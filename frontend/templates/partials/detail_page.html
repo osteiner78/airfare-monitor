@@ -61,6 +61,20 @@
                 <label for="filter-duration">Max duration: <span id="filter-duration-label">{% if max_duration %}{{ max_duration // 60 }}h {{ "%02d"|format(max_duration % 60) }}m{% else %}—{% endif %}</span></label>
                 <input type="range" id="filter-duration" min="0" max="{{ max_duration }}" value="{{ max_duration }}">
             </div>
+            {% if airlines %}
+            <div class="filter-group">
+                <label>Airlines</label>
+                <div class="airline-list">
+                    {% for a in airlines %}
+                    <label class="airline-row">
+                        <input type="checkbox" class="filter-airline" value="{{ a.name }}" checked>
+                        <span class="airline-name">{{ a.name or "Unknown" }}</span>
+                        <span class="airline-meta">({{ a.count }}) {{ "%.2f"|format(a.best_price) }} {{ tracker.currency }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
             <button id="filter-reset" class="filter-reset-btn">Reset</button>
         </aside>
         <div class="detail-main">
@@ -95,4 +109,4 @@
 <script>window.chartCurrency = "{{ tracker.currency }}";</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
 <script src="/static/charts.js?v=012"></script>
-<script src="/static/filters.js?v=012"></script>
+<script src="/static/filters.js?v=013"></script>

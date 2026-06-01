@@ -747,6 +747,33 @@ h1 {
     box-sizing: border-box;
 }
 
+.airline-list {
+    max-height: 180px;
+    overflow-y: auto;
+}
+
+.airline-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    padding: 0.15rem 0;
+    cursor: pointer;
+}
+
+.airline-name {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.airline-meta {
+    margin-left: auto;
+    white-space: nowrap;
+    color: #555;
+}
+
 .filter-reset-btn {
     width: 100%;
     padding: 0.35rem 0;

@@ -15,10 +15,20 @@
         var maxStops = stopsEl.value === "" ? Infinity : parseInt(stopsEl.value, 10);
         var maxDuration = parseInt(durationEl.value, 10);
 
+        var airlineCheckboxes = document.querySelectorAll(".filter-airline");
+        var selectedAirlines = null;
+        if (airlineCheckboxes.length > 0) {
+            selectedAirlines = new Set();
+            airlineCheckboxes.forEach(function (cb) {
+                if (cb.checked) selectedAirlines.add(cb.value);
+            });
+        }
+
         function passes(f) {
             var stopsOk = (f.stops == null) || f.stops <= maxStops;
             var durationOk = (f.duration_min == null) || f.duration_min <= maxDuration;
-            return stopsOk && durationOk;
+            var airlineOk = (selectedAirlines === null) || selectedAirlines.has(f.airline || "");
+            return stopsOk && durationOk && airlineOk;
         }
 
         var survivors = allFlights.filter(passes);
@@ -80,11 +90,18 @@
             applyFilters();
         });
 
+        document.querySelectorAll(".filter-airline").forEach(function (cb) {
+            cb.addEventListener("change", applyFilters);
+        });
+
         if (resetBtn) {
             resetBtn.addEventListener("click", function () {
                 stopsEl.value = "";
                 durationEl.value = durationEl.max;
                 if (durationLabel) durationLabel.textContent = formatDuration(parseInt(durationEl.max, 10));
+                document.querySelectorAll(".filter-airline").forEach(function (cb) {
+                    cb.checked = true;
+                });
                 applyFilters();
             });
         }

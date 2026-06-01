@@ -19,6 +19,7 @@
         <tr data-flight-key="{{ item.flight.flight_key }}"
             data-stops="{{ item.flight.stops }}"
             data-duration="{{ item.flight.duration_min if item.flight.duration_min is not none else '' }}"
+            data-airline="{{ item.flight.airline if item.flight.airline is not none else '' }}"
             class="{% if item.delta and item.delta.type == 'missing' %}row-missing{% endif %}{% if row_color %} row-colored{% endif %}"
             {% if row_color %}style="--row-color: {{ row_color }}"{% endif %}>
             <td>{{ airline_logo(item.flight.flight_number, item.flight.airline) }}</td>
