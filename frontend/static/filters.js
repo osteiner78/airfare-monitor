@@ -89,6 +89,15 @@
         survivors.sort(function (a, b) { return a.price - b.price; });
         var topSurvivors = survivors.slice(0, topN);
 
+        // Also chart sticky keys (ever-top-N) that pass current filters,
+        // even if they've slipped beyond position topN.
+        var stickySet = new Set(window.stickyFlightKeys || []);
+        var topKeySet = new Set(topSurvivors.map(function (f) { return f.flight_key; }));
+        var stickyExtras = survivors.filter(function (f) {
+            return stickySet.has(f.flight_key) && !topKeySet.has(f.flight_key);
+        });
+        var chartSurvivors = topSurvivors.concat(stickyExtras);
+
         var currency = window.chartCurrency || "";
         var trackerId = window.trackerId;
 
@@ -122,13 +131,13 @@
         saveFilterState();
 
         var colorByKey = {};
-        topSurvivors.forEach(function (f, i) {
+        chartSurvivors.forEach(function (f, i) {
             colorByKey[f.flight_key] = COLORS[i % COLORS.length];
         });
 
         var survivorSet = new Set(survivors.map(function (f) { return f.flight_key; }));
 
-        var datasets = topSurvivors.map(function (f, i) {
+        var datasets = chartSurvivors.map(function (f, i) {
             return {
                 label: f.label,
                 color: COLORS[i % COLORS.length],

@@ -109,9 +109,10 @@
 
 <script>window.chartData = {{ chart_datasets | safe }};</script>
 <script>window.allFlights = {{ all_flights | safe }};</script>
+<script>window.stickyFlightKeys = {{ sticky_flight_keys | safe }};</script>
 <script>window.chartTopN = {{ tracker.top_n }};</script>
 <script>window.chartCurrency = "{{ tracker.currency | currency_symbol }}";</script>
 <script>window.trackerId = {{ tracker.id }};</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
 <script src="/static/charts.js?v=013"></script>
-<script src="/static/filters.js?v=018"></script>
+<script src="/static/filters.js?v=019"></script>

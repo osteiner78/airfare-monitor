@@ -262,44 +262,65 @@ async def _build_detail_context(tracker_id: int) -> dict:
     history = await get_price_history(tracker_id)
 
     top_n = tracker["top_n"]
-    # ordered by price ascending (flights_with_delta is already price-asc from the DB query)
-    ordered_top_keys = [
-        f["flight"]["flight_key"]
-        for f in flights_with_delta[:top_n]
-        if f.get("delta", {}).get("type") != "missing"
-    ]
+    sticky_keys = await get_sticky_top_flight_keys(tracker_id, top_n)
+
     def _flight_label(flight: dict) -> str:
         num = (flight.get("flight_number") or "").strip()
         airline = (flight.get("airline") or "").strip()
         if num and airline:
             return f"{airline} {num}"
-        return num or airline or flight["flight_key"]
+        return num or airline or flight.get("flight_key", "")
 
-    # pre-create datasets in price-rank order with label from current flight data
-    chart_datasets = {}
-    for f in flights_with_delta[:top_n]:
-        if f.get("delta", {}).get("type") == "missing":
-            continue
-        key = f["flight"]["flight_key"]
-        chart_datasets[key] = {"label": _flight_label(f["flight"]), "data": []}
+    # Index current non-missing flights by key for label lookup.
+    current_flight_map = {
+        f["flight"]["flight_key"]: f["flight"]
+        for f in flights_with_delta
+        if f.get("delta", {}).get("type") != "missing"
+    }
 
-    flight_key_colors = _assign_chart_colors(ordered_top_keys)
-    for key, entry in chart_datasets.items():
-        entry["color"] = flight_key_colors[key]
-
-    # group history by flight_key for chart datasets and all_flights
+    # Build history series and keep the most-recent row per key for label fallback.
     history_by_key: dict[str, list] = {}
+    history_latest: dict[str, dict] = {}
     for row in history:
         key = row["flight_key"]
         if key not in history_by_key:
             history_by_key[key] = []
-        history_by_key[key].append({
-            "x": row["searched_at"].replace(" ", "T"),
-            "y": row["price"],
-        })
+        history_by_key[key].append({"x": row["searched_at"].replace(" ", "T"), "y": row["price"]})
+        history_latest[key] = row  # history is ASC so last write = most recent
 
-    for key, entry in chart_datasets.items():
-        entry["data"] = history_by_key.get(key, [])
+    def _label_for_key(key: str) -> str:
+        if key in current_flight_map:
+            return _flight_label(current_flight_map[key])
+        if key in history_latest:
+            return _flight_label(history_latest[key])
+        return key
+
+    # Current top-N keys in price order → determine color rank.
+    ordered_top_keys = [
+        f["flight"]["flight_key"]
+        for f in flights_with_delta[:top_n]
+        if f.get("delta", {}).get("type") != "missing"
+    ]
+    # Sticky keys that are not in the current top-N (ever-cheap, now displaced).
+    top_key_set = set(ordered_top_keys)
+    sticky_extras = [k for k in sticky_keys if k not in top_key_set]
+    all_chart_keys = ordered_top_keys + sticky_extras
+
+    all_chart_colors = _assign_chart_colors(all_chart_keys)
+
+    # flight_key_colors drives row highlighting — only non-missing current flights
+    # so that missing rows keep their neutral style even when tracked in the chart.
+    non_missing_chart_keys = [k for k in all_chart_keys if k in current_flight_map]
+    flight_key_colors = _assign_chart_colors(non_missing_chart_keys)
+
+    chart_datasets = {
+        key: {
+            "label": _label_for_key(key),
+            "color": all_chart_colors[key],
+            "data": history_by_key.get(key, []),
+        }
+        for key in all_chart_keys
+    }
 
     all_flights = []
     for f in flights_with_delta:
@@ -339,6 +360,7 @@ async def _build_detail_context(tracker_id: int) -> dict:
         "flights_with_delta": flights_with_delta,
         "chart_datasets": json.dumps(list(chart_datasets.values())),
         "all_flights": json.dumps(all_flights),
+        "sticky_flight_keys": json.dumps(list(sticky_keys)),
         "flight_key_colors": flight_key_colors,
         "max_stops": max_stops,
         "max_duration": max_duration,
