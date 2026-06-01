@@ -40,9 +40,12 @@
             };
         });
 
-        window.renderPriceChart(datasets);
+        if (typeof window.renderPriceChart === "function") {
+            window.renderPriceChart(datasets);
+        }
 
         document.querySelectorAll("tr[data-flight-key]").forEach(function (row) {
+            if (row.classList.contains("row-missing")) return;
             var key = row.getAttribute("data-flight-key");
             row.classList.remove("row-filtered", "row-colored");
             row.style.removeProperty("--row-color");

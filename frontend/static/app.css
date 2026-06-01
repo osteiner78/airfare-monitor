@@ -745,7 +745,7 @@ h1 {
     box-shadow: inset 4px 0 0 #ccc;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 600px) {
     .detail-layout {
         flex-direction: column;
     }
