@@ -28,7 +28,10 @@ router = APIRouter(prefix="/api")
 
 @router.get("/trackers")
 async def list_trackers_endpoint():
-    return await get_tracker_summaries()
+    rows = await get_tracker_summaries()
+    for r in rows:
+        r["active"] = bool(r["active"])
+    return rows
 
 
 @router.post("/trackers", status_code=201)

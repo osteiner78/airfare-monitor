@@ -83,6 +83,7 @@ _env.filters["airline_code"] = _airline_code
 
 
 def _split_timestamps(flight_dict: dict) -> None:
+    raw_dates: dict[str, str] = {}
     for key in ("departure_time", "arrival_time"):
         val = flight_dict.get(key)
         if val and "T" in str(val):
@@ -95,6 +96,16 @@ def _split_timestamps(flight_dict: dict) -> None:
                 time_part = time_part[:5]
             flight_dict[key + "_date"] = _format_date(date_part)
             flight_dict[key + "_time"] = time_part + tz_suffix
+            raw_dates[key] = date_part
+    dep = raw_dates.get("departure_time")
+    arr = raw_dates.get("arrival_time")
+    offset = 0
+    if dep and arr:
+        try:
+            offset = (datetime.fromisoformat(arr).date() - datetime.fromisoformat(dep).date()).days
+        except (ValueError, TypeError):
+            pass
+    flight_dict["arrival_day_offset"] = offset
 
 
 def _enrich_summaries(summaries: list) -> list:

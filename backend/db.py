@@ -297,7 +297,11 @@ async def get_tracker_summaries() -> list:
                                                WHERE tracker_id = t.id
                                                ORDER BY searched_at DESC LIMIT 1)
                        ORDER BY fp.price ASC LIMIT 1
-                      ) AS best_flight_number
+                      ) AS best_flight_number,
+                      (SELECT MIN(fp2.price)
+                       FROM flight_prices fp2
+                       WHERE fp2.tracker_id = t.id
+                      ) AS historical_best_price
                FROM trackers t
                ORDER BY t.id""",
         ) as cur:

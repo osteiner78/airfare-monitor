@@ -6,7 +6,6 @@
             <th>Flight</th>
             <th>Dep Date</th>
             <th>Dep Time</th>
-            <th>Arr Date</th>
             <th>Arr Time</th>
             <th>Duration</th>
             <th>Stops</th>
@@ -26,8 +25,7 @@
             <td>{{ item.flight.flight_number or "—" }}</td>
             <td>{{ item.flight.get("departure_time_date", item.flight.get("departure_time", "—")) }}</td>
             <td>{{ item.flight.get("departure_time_time", "—") }}</td>
-            <td>{{ item.flight.get("arrival_time_date", "—") }}</td>
-            <td>{{ item.flight.get("arrival_time_time", "—") }}</td>
+            <td>{{ item.flight.get("arrival_time_time", "—") }}{% set off = item.flight.get("arrival_day_offset", 0) or 0 %}{% if off > 0 %} <span class="day-offset">(+{{ off }} {{ "day" if off == 1 else "days" }})</span>{% endif %}</td>
             <td>{% if item.flight.duration_min is not none %}{{ item.flight.duration_min // 60 }}h {{ "%02d"|format(item.flight.duration_min % 60) }}m{% else %}—{% endif %}</td>
             <td>{{ item.flight.stops }}</td>
             <td class="price-cell">{{ "%.2f"|format(item.flight.price) }} {{ item.flight.currency }}</td>

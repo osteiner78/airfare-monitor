@@ -15,28 +15,32 @@
             </div>
         </div>
         <div class="detail-controls">
-            <span class="badge {% if tracker.active %}active{% else %}paused{% endif %}">
-                {{ "Active" if tracker.active else "Paused" }}
-            </span>
-            <button hx-post="/trackers/{{ tracker.id }}/search"
-                    hx-target="#detail-content"
-                    hx-swap="outerHTML"
-                    hx-indicator="#search-spinner">
-                Search Now
-            </button>
-            <a href="https://www.google.com/travel/flights?q=One-way+flights+to+{{ tracker.destination }}+from+{{ tracker.origin }}+on+{{ tracker.depart_date }}&curr={{ tracker.currency }}"
-               target="_blank"
-               class="gf-link">Google Flights</a>
-            <button hx-patch="/trackers/{{ tracker.id }}/toggle-detail"
-                    hx-target="#detail-content"
-                    hx-swap="outerHTML">
-                {{ "Pause" if tracker.active else "Resume" }}
-            </button>
-            <button class="danger"
-                    hx-delete="/trackers/{{ tracker.id }}/detail"
-                    hx-confirm="Delete this tracker?">
-                Delete
-            </button>
+            <div class="detail-controls-left">
+                <button hx-post="/trackers/{{ tracker.id }}/search"
+                        hx-target="#detail-content"
+                        hx-swap="outerHTML"
+                        hx-indicator="#search-spinner">
+                    Search Now
+                </button>
+                <a href="https://www.google.com/travel/flights?q=One-way+flights+to+{{ tracker.destination }}+from+{{ tracker.origin }}+on+{{ tracker.depart_date }}&curr={{ tracker.currency }}"
+                   target="_blank"
+                   class="gf-link">Google Flights</a>
+            </div>
+            <div class="detail-controls-right">
+                <span class="badge {% if tracker.active %}active{% else %}paused{% endif %}">
+                    {{ "Active" if tracker.active else "Paused" }}
+                </span>
+                <button hx-patch="/trackers/{{ tracker.id }}/toggle-detail"
+                        hx-target="#detail-content"
+                        hx-swap="outerHTML">
+                    {{ "Pause" if tracker.active else "Resume" }}
+                </button>
+                <button class="danger"
+                        hx-delete="/trackers/{{ tracker.id }}/detail"
+                        hx-confirm="Delete this tracker?">
+                    Delete
+                </button>
+            </div>
         </div>
         <span id="search-spinner" class="htmx-indicator">Searching...</span>
     </div>
@@ -69,7 +73,7 @@
 
             <div class="results-section">
                 <div class="results-header">
-                    <h2>Current Results</h2>
+                    <h2>Last prices fetched <span class="last-checked" data-iso="{{ latest_snapshot.searched_at or '' }}">—</span></h2>
                 </div>
                 {% include "partials/results_table.html" %}
             </div>
@@ -85,6 +89,7 @@
 <script>window.chartData = {{ chart_datasets | safe }};</script>
 <script>window.allFlights = {{ all_flights | safe }};</script>
 <script>window.chartTopN = {{ tracker.top_n }};</script>
+<script>window.chartCurrency = "{{ tracker.currency }}";</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
 <script src="/static/charts.js?v=010"></script>
 <script src="/static/filters.js?v=010"></script>

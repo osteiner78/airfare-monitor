@@ -30,6 +30,9 @@
         </div>
         <div class="card-body">
             <span class="date">{{ tracker.depart_date | format_date }}</span>
+            {% if tracker.historical_best_price is not none %}
+            <span class="card-hist">All-time best: {{ "%.2f"|format(tracker.historical_best_price) }} {{ tracker.currency }}</span>
+            {% endif %}
         </div>
     </div>
     <div class="card-footer">

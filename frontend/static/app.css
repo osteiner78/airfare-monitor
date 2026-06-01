@@ -163,6 +163,17 @@ h1 {
     color: #666;
 }
 
+.card-hist {
+    font-size: 0.75rem;
+    color: #999;
+    margin-left: 0.75rem;
+}
+
+.day-offset {
+    font-size: 0.8em;
+    color: #999;
+}
+
 .date {
     font-size: 0.8125rem;
     color: #666;
@@ -345,8 +356,18 @@ h1 {
 .detail-controls {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 0.75rem;
     margin-top: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.detail-controls-left,
+.detail-controls-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
 }
 
 .detail-controls button {
