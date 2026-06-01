@@ -1,12 +1,21 @@
-(function () {
+var colors = [
+    "#4a90d9", "#e67e22", "#2ecc71", "#e74c3c", "#9b59b6",
+    "#1abc9c", "#f39c12", "#3498db", "#e91e63", "#00bcd4",
+];
+
+window.renderPriceChart = function (datasets) {
     var canvas = document.getElementById("price-chart");
     if (!canvas) return;
 
     var existing = Chart.getChart(canvas);
     if (existing) existing.destroy();
 
-    if (!window.chartData || !window.chartData.length) {
+    var noDataEl = canvas.parentNode.querySelector(".no-data-msg");
+    if (noDataEl) noDataEl.remove();
+
+    if (!datasets || !datasets.length) {
         var noData = document.createElement("p");
+        noData.className = "no-data-msg";
         noData.textContent = "No price data yet";
         noData.style.cssText = "text-align:center;color:#888;padding:2rem 0";
         canvas.parentNode.appendChild(noData);
@@ -15,12 +24,7 @@
 
     var ctx = canvas.getContext("2d");
 
-    var colors = [
-        "#4a90d9", "#e67e22", "#2ecc71", "#e74c3c", "#9b59b6",
-        "#1abc9c", "#f39c12", "#3498db", "#e91e63", "#00bcd4",
-    ];
-
-    window.chartData.forEach(function (ds, i) {
+    datasets.forEach(function (ds, i) {
         ds.data.forEach(function (point) {
             point.x = new Date(point.x).getTime();
         });
@@ -34,7 +38,7 @@
     new Chart(ctx, {
         type: "line",
         data: {
-            datasets: window.chartData,
+            datasets: datasets,
         },
         options: {
             responsive: true,
@@ -83,4 +87,6 @@
             },
         },
     });
-})();
+};
+
+renderPriceChart(window.chartData || []);
