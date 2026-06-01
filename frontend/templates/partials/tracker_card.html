@@ -1,12 +1,15 @@
 {% from "partials/macros.html" import airline_logo %}
 <div class="tracker-card" id="card-{{ tracker.id }}">
-    <div class="card-clickable"
-         hx-get="/trackers/{{ tracker.id }}"
-         hx-push-url="true"
-         hx-target="body"
-         hx-swap="innerHTML">
-        <div class="card-header">
+    <div class="card-inner">
+        <div class="card-left"
+             hx-get="/trackers/{{ tracker.id }}"
+             hx-push-url="true"
+             hx-target="body"
+             hx-swap="innerHTML">
             <span class="route">{{ tracker.origin }} &rarr; {{ tracker.destination }}</span>
+            <span class="date">{{ tracker.depart_date | format_date }}</span>
+        </div>
+        <div class="card-right">
             <div class="card-price-col">
                 <div class="price-logo-row">
                     <span class="best-price">
@@ -22,17 +25,28 @@
                 <span class="card-delta {% if tracker.price_delta.type == 'down' %}down{% elif tracker.price_delta.type == 'up' %}up{% elif tracker.price_delta.type == 'same' %}same{% endif %}">
                     {% if tracker.price_delta.type == 'down' %}&darr; -{{ "%.2f"|format(tracker.price_delta.amount) }} {{ tracker.currency }}
                     {% elif tracker.price_delta.type == 'up' %}&uarr; +{{ "%.2f"|format(tracker.price_delta.amount) }} {{ tracker.currency }}
-                    {% elif tracker.price_delta.type == 'same' %}no change
+                    {% elif tracker.price_delta.type == 'same' %}&mdash;
                     {% endif %}
                 </span>
                 {% endif %}
+                {% if tracker.historical_best_price is not none %}
+                <span class="card-hist">All-time best: {{ "%.2f"|format(tracker.historical_best_price) }} {{ tracker.currency }}</span>
+                {% endif %}
             </div>
-        </div>
-        <div class="card-body">
-            <span class="date">{{ tracker.depart_date | format_date }}</span>
-            {% if tracker.historical_best_price is not none %}
-            <span class="card-hist">All-time best: {{ "%.2f"|format(tracker.historical_best_price) }} {{ tracker.currency }}</span>
-            {% endif %}
+            <div class="card-actions">
+                <button hx-patch="/trackers/{{ tracker.id }}/toggle"
+                        hx-target="#card-{{ tracker.id }}"
+                        hx-swap="outerHTML">
+                    {{ "Pause" if tracker.active else "Resume" }}
+                </button>
+                <button class="danger"
+                        hx-delete="/trackers/{{ tracker.id }}"
+                        hx-target="#tracker-list"
+                        hx-swap="innerHTML"
+                        hx-confirm="Delete this tracker?">
+                    Delete
+                </button>
+            </div>
         </div>
     </div>
     <div class="card-footer">
@@ -50,20 +64,6 @@
                     Never
                 {% endif %}
             </span>
-        </div>
-        <div class="card-actions">
-            <button hx-patch="/trackers/{{ tracker.id }}/toggle"
-                    hx-target="#card-{{ tracker.id }}"
-                    hx-swap="outerHTML">
-                {{ "Pause" if tracker.active else "Resume" }}
-            </button>
-            <button class="danger"
-                    hx-delete="/trackers/{{ tracker.id }}"
-                    hx-target="#tracker-list"
-                    hx-swap="innerHTML"
-                    hx-confirm="Delete this tracker?">
-                Delete
-            </button>
         </div>
     </div>
 </div>

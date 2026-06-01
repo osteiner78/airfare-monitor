@@ -26,7 +26,9 @@ window.renderPriceChart = function (datasets) {
 
     datasets.forEach(function (ds, i) {
         ds.data.forEach(function (point) {
-            point.x = new Date(point.x).getTime();
+            if (typeof point.x === "string") {
+                point.x = new Date(point.x + "Z").getTime();
+            }
         });
         ds.borderColor = ds.color || colors[i % colors.length];
         ds.backgroundColor = (ds.color || colors[i % colors.length]) + "20";

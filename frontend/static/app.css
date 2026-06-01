@@ -18,7 +18,7 @@ body {
 }
 
 .detail-container {
-    max-width: 1100px;
+    max-width: 1400px;
 }
 
 h1 {
@@ -125,24 +125,37 @@ h1 {
     transition: box-shadow 0.15s;
 }
 
-.card-clickable {
-    cursor: pointer;
-}
-
-.card-clickable:hover {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-}
-
-.card-header {
+.card-inner {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.25rem;
+    align-items: flex-start;
+    margin-bottom: 0.5rem;
+}
+
+.card-left {
+    cursor: pointer;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding-right: 1rem;
+}
+
+.card-left:hover .route {
+    color: #4a90d9;
+}
+
+.card-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.5rem;
 }
 
 .route {
     font-size: 1.125rem;
     font-weight: 600;
+    transition: color 0.15s;
 }
 
 .best-price {
@@ -152,21 +165,10 @@ h1 {
     text-align: right;
 }
 
-.card-body {
-    display: flex;
-    align-items: center;
-    margin-bottom: 0.25rem;
-}
-
-.card-body .date {
-    font-size: 0.8125rem;
-    color: #666;
-}
-
 .card-hist {
     font-size: 0.75rem;
     color: #999;
-    margin-left: 0.75rem;
+    text-align: right;
 }
 
 .day-offset {
@@ -465,6 +467,7 @@ h1 {
 .results-table td {
     padding: 0.5rem 0.75rem;
     border-bottom: 1px solid #f0f0f0;
+    white-space: nowrap;
 }
 
 .results-table tbody tr:hover {
@@ -774,4 +777,10 @@ h1 {
         width: 100%;
         position: static;
     }
+}
+
+.last-fetched-time {
+    font-size: 0.8rem;
+    color: #999;
+    margin-top: 0.1rem;
 }
