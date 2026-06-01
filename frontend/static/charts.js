@@ -67,6 +67,14 @@
                 },
                 tooltip: {
                     callbacks: {
+                        title: function (items) {
+                            var d = new Date(items[0].parsed.x);
+                            var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                          "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                            return months[d.getMonth()] + " " + d.getDate() + " - " +
+                                   String(d.getHours()).padStart(2, "0") + ":" +
+                                   String(d.getMinutes()).padStart(2, "0");
+                        },
                         label: function (ctx) {
                             return ctx.dataset.label + ": " + ctx.parsed.y;
                         },

@@ -185,7 +185,7 @@ async def test_results_table_renders_kiwi_logo_for_valid_code(client):
         "stops": 0,
     }])
     response = await client.get("/trackers/1")
-    assert "images.kiwi.com/airlines/64/VY.png" in response.text
+    assert "images.kiwi.com/airlines/128/VY.png" in response.text
 
 
 @pytest.mark.asyncio
@@ -257,4 +257,69 @@ async def test_dashboard_card_renders_logo_for_best_flight(client):
         },
     ])
     response = await client.get("/")
-    assert "images.kiwi.com/airlines/64/LH.png" in response.text
+    assert "images.kiwi.com/airlines/128/LH.png" in response.text
+
+
+# --- Plan 009: results-table row colors match chart line colors ---
+
+@pytest.mark.asyncio
+async def test_charted_row_carries_its_chart_color(client):
+    from backend.db import create_snapshot, insert_flight_prices
+    await client.post("/api/trackers", json=TRACKER_FORM)
+    snapshot = await create_snapshot(1, results_count=1)
+    await insert_flight_prices(snapshot["id"], 1, [{
+        "flight_key": "test|VY|6201|2026-01-01T00:00:00",
+        "source": "test", "price": 100.0, "currency": "EUR",
+        "airline": "Vueling", "flight_number": "VY 6201",
+        "departure_time": "2026-01-01T10:00:00",
+        "arrival_time": "2026-01-01T12:00:00",
+        "duration_min": 120, "stops": 0,
+    }])
+    response = await client.get("/trackers/1")
+    assert "--row-color: #4a90d9" in response.text
+
+
+@pytest.mark.asyncio
+async def test_charted_row_has_flight_key_data_attribute(client):
+    from backend.db import create_snapshot, insert_flight_prices
+    await client.post("/api/trackers", json=TRACKER_FORM)
+    snapshot = await create_snapshot(1, results_count=1)
+    await insert_flight_prices(snapshot["id"], 1, [{
+        "flight_key": "test|VY|6201|2026-01-01T00:00:00",
+        "source": "test", "price": 100.0, "currency": "EUR",
+        "airline": "Vueling", "flight_number": "VY 6201",
+        "departure_time": "2026-01-01T10:00:00",
+        "arrival_time": "2026-01-01T12:00:00",
+        "duration_min": 120, "stops": 0,
+    }])
+    response = await client.get("/trackers/1")
+    assert 'data-flight-key="test|VY|6201|2026-01-01T00:00:00"' in response.text
+
+
+@pytest.mark.asyncio
+async def test_missing_row_has_no_row_color(client):
+    # snapshot 1 has flight A; snapshot 2 replaces it with flight B, so A becomes
+    # a "missing" row. Only B is charted, so exactly one row may be colored.
+    from backend.db import create_snapshot, insert_flight_prices
+    await client.post("/api/trackers", json=TRACKER_FORM)
+    snap1 = await create_snapshot(1, results_count=1)
+    await insert_flight_prices(snap1["id"], 1, [{
+        "flight_key": "test|VY|6201|2026-01-01T00:00:00",
+        "source": "test", "price": 100.0, "currency": "EUR",
+        "airline": "Vueling", "flight_number": "VY 6201",
+        "departure_time": "2026-01-01T10:00:00",
+        "arrival_time": "2026-01-01T12:00:00",
+        "duration_min": 120, "stops": 0,
+    }])
+    snap2 = await create_snapshot(1, results_count=1)
+    await insert_flight_prices(snap2["id"], 1, [{
+        "flight_key": "test|LH|400|2026-01-02T00:00:00",
+        "source": "test", "price": 120.0, "currency": "EUR",
+        "airline": "Lufthansa", "flight_number": "LH 400",
+        "departure_time": "2026-01-02T08:00:00",
+        "arrival_time": "2026-01-02T10:00:00",
+        "duration_min": 120, "stops": 0,
+    }])
+    response = await client.get("/trackers/1")
+    assert 'data-flight-key="test|VY|6201|2026-01-01T00:00:00"' in response.text
+    assert response.text.count("row-colored") == 1

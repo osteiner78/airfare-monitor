@@ -211,6 +211,12 @@ h1 {
     gap: 0.125rem;
 }
 
+.price-logo-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
 .card-status-left {
     display: flex;
     align-items: center;
@@ -664,7 +670,7 @@ h1 {
 }
 
 .airline-logo {
-    height: 20px;
+    height: 32px;
     width: auto;
     vertical-align: middle;
 }

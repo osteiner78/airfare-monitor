@@ -7,15 +7,17 @@
          hx-swap="innerHTML">
         <div class="card-header">
             <span class="route">{{ tracker.origin }} &rarr; {{ tracker.destination }}</span>
-            {{ airline_logo(tracker.best_flight_number, tracker.best_flight_number) }}
             <div class="card-price-col">
-                <span class="best-price">
-                    {% if tracker.best_price is not none %}
-                        {{ "%.2f"|format(tracker.best_price) }} {{ tracker.currency }}
-                    {% else %}
-                        &mdash;
-                    {% endif %}
-                </span>
+                <div class="price-logo-row">
+                    <span class="best-price">
+                        {% if tracker.best_price is not none %}
+                            {{ "%.2f"|format(tracker.best_price) }} {{ tracker.currency }}
+                        {% else %}
+                            &mdash;
+                        {% endif %}
+                    </span>
+                    {{ airline_logo(tracker.best_flight_number, tracker.best_flight_number) }}
+                </div>
                 {% if tracker.price_delta %}
                 <span class="card-delta {% if tracker.price_delta.type == 'down' %}down{% elif tracker.price_delta.type == 'up' %}up{% elif tracker.price_delta.type == 'same' %}same{% endif %}">
                     {% if tracker.price_delta.type == 'down' %}&darr; -{{ "%.2f"|format(tracker.price_delta.amount) }} {{ tracker.currency }}

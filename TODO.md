@@ -11,6 +11,7 @@
 - [ ] **Bundle Chart.js locally** — currently loaded from jsdelivr CDN. Bundle for offline use.
 - [ ] **Replace airline codes with airline logos/icons**
 - [ ] **Fetch per-flight booking URLs** — using fli's `get_booking_options()`.
+- [ ] **Fix chart tooltip** — tooltip shows raw price without currency symbol and uses epoch timestamps. Should show formatted date + currency (e.g., "May 31 19:44 — 102.00 EUR").
 
 ## Future (v2)
 

@@ -7,10 +7,10 @@
             </div>
             <div class="detail-prices">
                 {% if best_price is not none %}
-                <span class="detail-best">Best now: {{ "%.2f"|format(best_price) }} {{ tracker.currency }}</span>
+                <div class="detail-best">Best now: {{ "%.2f"|format(best_price) }} {{ tracker.currency }}</div>
                 {% endif %}
                 {% if historical_best_price is not none %}
-                <span class="detail-historical"> / Historical best: {{ "%.2f"|format(historical_best_price) }} {{ tracker.currency }}</span>
+                <div class="detail-historical">Historical best: {{ "%.2f"|format(historical_best_price) }} {{ tracker.currency }}</div>
                 {% endif %}
             </div>
         </div>
