@@ -42,18 +42,38 @@
     </div>
 
     {% if latest_snapshot %}
-    <div class="chart-section">
-        <h2>Price History</h2>
-        <div class="chart-container">
-            <canvas id="price-chart"></canvas>
-        </div>
-    </div>
+    <div class="detail-layout">
+        <aside class="filter-sidebar">
+            <div class="filter-group">
+                <label for="filter-stops">Max stops</label>
+                <select id="filter-stops">
+                    <option value="">Any</option>
+                    {% for i in range(max_stops + 1) %}
+                    <option value="{{ i }}">{% if i == 0 %}Nonstop{% elif i == 1 %}&le;1 stop{% else %}&le;{{ i }} stops{% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="filter-duration">Max duration: <span id="filter-duration-label">{% if max_duration %}{{ max_duration // 60 }}h {{ "%02d"|format(max_duration % 60) }}m{% else %}—{% endif %}</span></label>
+                <input type="range" id="filter-duration" min="0" max="{{ max_duration }}" value="{{ max_duration }}">
+            </div>
+            <button id="filter-reset" class="filter-reset-btn">Reset</button>
+        </aside>
+        <div class="detail-main">
+            <div class="chart-section">
+                <h2>Price History</h2>
+                <div class="chart-container">
+                    <canvas id="price-chart"></canvas>
+                </div>
+            </div>
 
-    <div class="results-section">
-        <div class="results-header">
-            <h2>Current Results</h2>
+            <div class="results-section">
+                <div class="results-header">
+                    <h2>Current Results</h2>
+                </div>
+                {% include "partials/results_table.html" %}
+            </div>
         </div>
-        {% include "partials/results_table.html" %}
     </div>
     {% else %}
     <div class="empty-state" style="padding: 2rem 0;">
@@ -67,3 +87,4 @@
 <script>window.chartTopN = {{ tracker.top_n }};</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
 <script src="/static/charts.js"></script>
+<script src="/static/filters.js"></script>

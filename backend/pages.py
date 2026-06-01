@@ -269,6 +269,9 @@ async def _build_detail_context(tracker_id: int) -> dict:
             "data": history_by_key.get(key, []),
         })
 
+    max_stops = max((f["stops"] for f in all_flights if f.get("stops") is not None), default=0)
+    max_duration = max((f["duration_min"] for f in all_flights if f.get("duration_min") is not None), default=0)
+
     best_price = min((f["flight"]["price"] for f in flights_with_delta if f.get("delta", {}).get("type") != "missing"), default=None)
     historical_best_price = await get_historical_best_price(tracker_id)
 
@@ -279,6 +282,8 @@ async def _build_detail_context(tracker_id: int) -> dict:
         "chart_datasets": json.dumps(list(chart_datasets.values())),
         "all_flights": json.dumps(all_flights),
         "flight_key_colors": flight_key_colors,
+        "max_stops": max_stops,
+        "max_duration": max_duration,
         "best_price": best_price,
         "historical_best_price": historical_best_price,
     }
