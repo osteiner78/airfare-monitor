@@ -130,10 +130,11 @@ async def add_tracker(request: Request):
         return_date=form.get("return_date") or None,
         top_n=5,
     )
-    backend.scheduler.add_tracker_job(tracker["id"], tracker["interval_minutes"])
-
     await insert_log("INFO", "tracker_created", tracker_id=tracker["id"],
                      message=f"{tracker['origin']} -> {tracker['destination']}")
+
+    await backend.scheduler.search_and_store(tracker["id"])
+    backend.scheduler.add_tracker_job(tracker["id"], tracker["interval_minutes"], run_immediately=False)
 
     summaries = _enrich_summaries(await get_tracker_summaries())
     return _render("partials/tracker_list.html", {"request": request, "trackers": summaries})

@@ -75,16 +75,18 @@ async def _evaluate_notifications(tracker_id: int, best_price: float) -> None:
             await insert_log("INFO", "notification_triggered", tracker_id=tracker_id, message=f"price {best_price} triggered {rule['rule_type']} {rule['threshold']}")
 
 
-def add_tracker_job(tracker_id: int, interval_minutes: int) -> None:
+def add_tracker_job(tracker_id: int, interval_minutes: int, run_immediately: bool = True) -> None:
     if scheduler is None:
         return
+    from datetime import timedelta
+    next_run = datetime.now() if run_immediately else datetime.now() + timedelta(minutes=interval_minutes)
     scheduler.add_job(
         search_and_store,
         "interval",
         minutes=interval_minutes,
         args=[tracker_id],
         id=f"tracker_{tracker_id}",
-        next_run_time=datetime.now(),
+        next_run_time=next_run,
         replace_existing=True,
     )
 

@@ -4,7 +4,7 @@
     {% elif item.delta.type == "up" %}
     <span class="price-badge up">&uarr; +{{ "%.2f"|format(item.delta.amount) }} {{ item.flight.currency }}</span>
     {% elif item.delta.type == "same" %}
-    <span class="price-badge same">{{ "%.2f"|format(item.flight.price) }} {{ item.flight.currency }}</span>
+    <span class="price-badge same">—</span>
     {% elif item.delta.type == "new" %}
     <span class="price-badge new">new</span>
     {% elif item.delta.type == "missing" %}
