@@ -470,7 +470,7 @@ async def test_card_at_all_time_low_shows_combined_stat(client):
     await _seed_history(client, [100, 80])   # latest snapshot is the cheapest ever
     text = (await client.get("/")).text
     assert "rail-combined" in text
-    assert "all-time low" in text.lower()
+    assert "all-time best" in text.lower()
 
 
 @pytest.mark.asyncio
