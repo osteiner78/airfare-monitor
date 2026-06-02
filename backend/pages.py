@@ -151,21 +151,25 @@ def _compute_delta(current: float | None, reference: float | None) -> dict | Non
     return {"type": "same"}
 
 
+_MIN_SPAN_FRAC = 0.06
+
+
 def _sparkline(prices: list[float], w: int = 132, h: int = 34, pad: int = 4) -> dict | None:
     pts = [p for p in prices if p is not None]
     if len(pts) < 2:
         return None
     lo, hi = min(pts), max(pts)
-    span = hi - lo
+    mid = (lo + hi) / 2
+    floor = mid * _MIN_SPAN_FRAC
+    span = max(hi - lo, floor, 1e-9)
+    elo = mid - span / 2
     n = len(pts)
 
     def x(i: int) -> float:
         return round(pad + (w - 2 * pad) * i / (n - 1), 1)
 
     def y(p: float) -> float:
-        if span == 0:
-            return round(h / 2, 1)
-        return round(pad + (h - 2 * pad) * (1 - (p - lo) / span), 1)
+        return round(pad + (h - 2 * pad) * (1 - (p - elo) / span), 1)
 
     coords = [(x(i), y(p)) for i, p in enumerate(pts)]
     line = " ".join(f"{cx},{cy}" for cx, cy in coords)
@@ -173,11 +177,16 @@ def _sparkline(prices: list[float], w: int = 132, h: int = 34, pad: int = 4) -> 
     first, last = pts[0], pts[-1]
     trend = "down" if last < first else "up" if last > first else "flat"
     label_h = 11
+
+    low_idx = max(i for i, p in enumerate(pts) if p == lo)
+    low_cx, low_cy = coords[low_idx]
+
     return {
         "points": line,
         "area": area,
-        "first_x": coords[0][0],
-        "first_price": first,
+        "low_x": low_cx,
+        "low_y": low_cy,
+        "low_price": lo,
         "last_x": coords[-1][0],
         "last_y": coords[-1][1],
         "last_price": last,

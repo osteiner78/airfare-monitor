@@ -45,30 +45,36 @@
                 <span class="status-dot"></span>{{ "Active" if tracker.active else "Paused" }}
             </button>
         </div>
+        <div class="card-mid">
+            {% if tracker.spark %}
+            <svg class="spark spark-{{ tracker.spark.trend }}"
+                 viewBox="0 0 {{ tracker.spark.w }} {{ tracker.spark.h }}"
+                 preserveAspectRatio="none" aria-hidden="true">
+                <polygon class="spark-area" points="{{ tracker.spark.area }}"/>
+                <polyline class="spark-line" points="{{ tracker.spark.points }}"/>
+                <circle class="spark-low-dot" cx="{{ tracker.spark.low_x }}" cy="{{ tracker.spark.low_y }}" r="2.2"/>
+                <circle class="spark-dot" cx="{{ tracker.spark.last_x }}" cy="{{ tracker.spark.last_y }}" r="2.2"/>
+                <text class="spark-low-label" x="{{ tracker.spark.low_x }}" y="{{ tracker.spark.label_y }}" text-anchor="middle">{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.spark.low_price) }}</text>
+                <text class="spark-price-label" x="{{ tracker.spark.last_x }}" y="{{ tracker.spark.label_y }}" text-anchor="end">{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.spark.last_price) }}</text>
+            </svg>
+            {% endif %}
+            {% if tracker.historical_best_price is not none %}
+            <div class="alltime">
+                <span class="alltime-label">All-time best</span>
+                <span class="alltime-val">{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.historical_best_price) }}</span>
+            </div>
+            {% endif %}
+        </div>
         <div class="card-right">
             <span class="card-price-label">Current best price</span>
-            <div class="price-row">
-                {% if tracker.spark %}
-                <svg class="spark spark-{{ tracker.spark.trend }}"
-                     viewBox="0 0 {{ tracker.spark.w }} {{ tracker.spark.h }}"
-                     width="{{ tracker.spark.w }}" height="{{ tracker.spark.h }}"
-                     preserveAspectRatio="none" aria-hidden="true">
-                    <polygon class="spark-area" points="{{ tracker.spark.area }}"/>
-                    <polyline class="spark-line" points="{{ tracker.spark.points }}"/>
-                    <circle class="spark-dot" cx="{{ tracker.spark.last_x }}" cy="{{ tracker.spark.last_y }}" r="2.2"/>
-                    <text class="spark-price-label" x="{{ tracker.spark.first_x }}" y="{{ tracker.spark.label_y }}" text-anchor="start">{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.spark.first_price) }}</text>
-                    <text class="spark-price-label" x="{{ tracker.spark.last_x }}" y="{{ tracker.spark.label_y }}" text-anchor="end">{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.spark.last_price) }}</text>
-                </svg>
-                {% endif %}
-                <div class="price-main">
-                    <span class="best-price">
-                        {%- if tracker.best_price is not none -%}
-                            {{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.best_price) }}
-                        {%- else -%}&mdash;{%- endif -%}
-                    </span>
-                    {{ airline_logo(tracker.best_flight_number, tracker.best_flight_number) }}
-                    <small class="filtered-tag" style="display:none">filtered</small>
-                </div>
+            <div class="price-main">
+                <span class="best-price">
+                    {%- if tracker.best_price is not none -%}
+                        {{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.best_price) }}
+                    {%- else -%}&mdash;{%- endif -%}
+                </span>
+                {{ airline_logo(tracker.best_flight_number, tracker.best_flight_number) }}
+                <small class="filtered-tag" style="display:none">filtered</small>
             </div>
             {% if tracker.best_price is not none %}
             <div class="evo-strip">
@@ -77,15 +83,10 @@
                 {{ evo_cell('3h', tracker.delta_3h, tracker.currency) }}
             </div>
             {% endif %}
-            <div class="card-meta">
-                {% if tracker.historical_best_price is not none %}
-                <span class="meta-item">All-time best price <strong>{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.historical_best_price) }}</strong></span>
-                {% endif %}
-                <span class="meta-fetch">Last price fetch: <span class="last-checked" data-iso="{{ tracker.last_searched_at or '' }}">{%- if tracker.last_searched_at %}{{ tracker.last_searched_at }}{% else %}Never{% endif -%}</span></span>
-                {% if tracker.recent_alerts and tracker.recent_alerts > 0 %}
-                <span class="badge alert-count">{{ tracker.recent_alerts }} alert{{ 's' if tracker.recent_alerts > 1 else '' }}</span>
-                {% endif %}
-            </div>
+            <span class="meta-fetch">Last price fetch: <span class="last-checked" data-iso="{{ tracker.last_searched_at or '' }}">{%- if tracker.last_searched_at %}{{ tracker.last_searched_at }}{% else %}Never{% endif -%}</span></span>
+            {% if tracker.recent_alerts and tracker.recent_alerts > 0 %}
+            <span class="badge alert-count">{{ tracker.recent_alerts }} alert{{ 's' if tracker.recent_alerts > 1 else '' }}</span>
+            {% endif %}
         </div>
     </div>
 </div>
