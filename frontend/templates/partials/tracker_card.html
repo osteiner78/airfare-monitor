@@ -38,12 +38,6 @@
                 <span class="route">{{ tracker.origin }}<span class="route-arrow">&rarr;</span>{{ tracker.destination }}</span>
                 <span class="date">{{ tracker.depart_date | format_card_date }} &middot; one-way</span>
             </div>
-            <button class="status-toggle {% if tracker.active %}active{% else %}paused{% endif %}"
-                    hx-patch="/trackers/{{ tracker.id }}/toggle"
-                    hx-target="#card-{{ tracker.id }}"
-                    hx-swap="outerHTML">
-                <span class="status-dot"></span>{{ "Active" if tracker.active else "Paused" }}
-            </button>
         </div>
         <div class="card-evo">
             {% if tracker.best_price is not none %}
@@ -121,5 +115,11 @@
             {% endif %}
         </div>
     </div>
+    <button class="status-toggle {% if tracker.active %}active{% else %}paused{% endif %}"
+            hx-patch="/trackers/{{ tracker.id }}/toggle"
+            hx-target="#card-{{ tracker.id }}"
+            hx-swap="outerHTML">
+        <span class="status-dot"></span>{{ "Active" if tracker.active else "Paused" }}
+    </button>
     <span class="meta-fetch">Last checked: <span class="last-checked" data-iso="{{ tracker.last_searched_at or '' }}">{%- if tracker.last_searched_at %}{{ tracker.last_searched_at }}{% else %}Never{% endif -%}</span></span>
 </div>
