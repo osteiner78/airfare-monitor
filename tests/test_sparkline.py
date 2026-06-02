@@ -153,3 +153,83 @@ def test_near_zero_prices_no_div_by_zero():
     # coordinates are finite
     assert s["low_y"] == s["low_y"]   # not NaN
     assert s["last_y"] == s["last_y"]
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Plan 013 — y-rail geometry + de-collision
+# ════════════════════════════════════════════════════════════════════════════
+
+def test_returns_rail_fractions():
+    s = _spark([300, 600])
+    for k in ("last_y_frac", "low_y_frac", "current_rail", "alltime_rail"):
+        assert k in s
+        assert 0.0 <= s[k] <= 1.0
+
+
+def test_label_band_removed():
+    s = _spark([300, 600])
+    assert "label_y" not in s
+    assert s["h"] == H            # 34 — no extra label band
+
+
+def test_current_rail_never_below_alltime():
+    # current price is always >= all-time low, so the current label sits at or
+    # above the all-time label (smaller frac = higher on the chart).
+    for series in ([300, 600], [450, 451], [600, 300], [100, 80, 90], [400, 400]):
+        s = _spark(series)
+        assert s["current_rail"] <= s["alltime_rail"]
+
+
+def test_rail_gap_enforced_when_dots_close():
+    # €1 swing on €450 → both dots near center → labels must be pushed apart.
+    s = _spark([450, 451])
+    assert s["alltime_rail"] - s["current_rail"] >= 0.40 - 1e-6
+
+
+def test_at_all_time_low_true_when_current_is_min():
+    assert _spark([100, 80])["at_all_time_low"] is True
+
+
+def test_at_all_time_low_false_when_current_above_min():
+    assert _spark([80, 100])["at_all_time_low"] is False
+
+
+def test_at_all_time_low_true_when_min_repeats_at_end():
+    assert _spark([90, 80, 80])["at_all_time_low"] is True
+
+
+# ── _rail_positions (pure de-collision helper) ──────────────────────────────
+
+def test_rail_positions_far_apart_within_margins_unchanged():
+    from backend.pages import _rail_positions
+    # already separated and inside the margins → returned as-is
+    assert _rail_positions(0.2, 0.8) == (0.2, 0.8)
+
+
+def test_rail_positions_close_pushed_symmetric():
+    from backend.pages import _rail_positions, _MIN_GAP_FRAC
+    c, a = _rail_positions(0.50, 0.52)
+    assert a - c >= _MIN_GAP_FRAC - 1e-6
+    assert abs((c + a) / 2 - 0.51) < 1e-6     # centered on the original midpoint
+
+
+def test_rail_positions_clamped_at_top_keeps_gap():
+    from backend.pages import _rail_positions, _MIN_GAP_FRAC, _RAIL_MARGIN
+    c, a = _rail_positions(0.02, 0.05)
+    assert abs(c - _RAIL_MARGIN) < 1e-6
+    assert a - c >= _MIN_GAP_FRAC - 1e-6
+
+
+def test_rail_positions_clamped_at_bottom_keeps_gap():
+    from backend.pages import _rail_positions, _MIN_GAP_FRAC, _RAIL_MARGIN
+    c, a = _rail_positions(0.95, 0.99)
+    assert abs(a - (1 - _RAIL_MARGIN)) < 1e-6
+    assert a - c >= _MIN_GAP_FRAC - 1e-6
+
+
+def test_rail_positions_always_within_margins():
+    from backend.pages import _rail_positions, _RAIL_MARGIN
+    for c0, a0 in [(0.0, 0.0), (0.5, 0.5), (1.0, 1.0), (0.2, 0.8), (0.49, 0.51)]:
+        c, a = _rail_positions(c0, a0)
+        assert _RAIL_MARGIN - 1e-9 <= c <= 1 - _RAIL_MARGIN + 1e-9
+        assert _RAIL_MARGIN - 1e-9 <= a <= 1 - _RAIL_MARGIN + 1e-9

@@ -410,3 +410,82 @@ async def test_card_price_has_no_space_after_symbol(client):
     text = (await client.get("/")).text
     assert "€100" in text
     assert "€ 100" not in text
+
+
+# === Plan 013: 2-column price panel with color-matched y-rail ===
+# Fail-first — pins the rail layout, the removed chart text labels, and the
+# at-all-time-low combined state.
+
+async def _seed_history(client, prices, depart_date="2026-09-15"):
+    """A tracker with one snapshot per price, forced to strictly increasing
+    timestamps so the latest snapshot (and the series order) is deterministic."""
+    import aiosqlite
+    from backend.db import create_snapshot, insert_flight_prices, get_db_path
+    await client.post("/api/trackers", json={
+        "origin": "GVA", "destination": "BCN", "depart_date": depart_date,
+    })
+    for i, p in enumerate(prices):
+        snap = await create_snapshot(1, results_count=1)
+        ts = f"2026-01-{i + 1:02d} 12:00:00"
+        async with aiosqlite.connect(get_db_path()) as db:
+            await db.execute(
+                "UPDATE snapshots SET searched_at = ? WHERE id = ?", (ts, snap["id"])
+            )
+            await db.commit()
+        await insert_flight_prices(snap["id"], 1, [{
+            "flight_key": f"test|VY|{i}|2026-01-{i + 1:02d}T00:00:00",
+            "source": "test", "price": float(p), "currency": "EUR",
+            "airline": "Vueling", "flight_number": "VY 6201",
+        }])
+
+
+@pytest.mark.asyncio
+async def test_card_has_no_spark_text_labels(client):
+    await _seed_history(client, [100, 110])
+    text = (await client.get("/")).text
+    assert "spark-price-label" not in text
+    assert "spark-low-label" not in text
+
+
+@pytest.mark.asyncio
+async def test_card_renders_price_rail(client):
+    await _seed_history(client, [80, 100])   # current 100 > all-time low 80
+    text = (await client.get("/")).text
+    assert "price-rail" in text
+    assert "rail-current" in text
+
+
+@pytest.mark.asyncio
+async def test_card_keeps_best_price_class_for_filter_js(client):
+    # non-regression: dashboard applyFilteredPrices overwrites .best-price and
+    # toggles .filtered-tag — both must survive the refactor in every branch.
+    await _seed_history(client, [80, 100])
+    text = (await client.get("/")).text
+    assert "best-price" in text
+    assert "filtered-tag" in text
+
+
+@pytest.mark.asyncio
+async def test_card_at_all_time_low_shows_combined_stat(client):
+    await _seed_history(client, [100, 80])   # latest snapshot is the cheapest ever
+    text = (await client.get("/")).text
+    assert "rail-combined" in text
+    assert "all-time low" in text.lower()
+
+
+@pytest.mark.asyncio
+async def test_card_not_at_all_time_low_shows_two_rail_stats(client):
+    await _seed_history(client, [80, 100])
+    text = (await client.get("/")).text
+    assert "rail-current" in text
+    assert "rail-alltime" in text
+    assert "rail-combined" not in text
+
+
+@pytest.mark.asyncio
+async def test_card_without_history_uses_fallback(client):
+    await _seed_history(client, [120])       # single snapshot → no sparkline
+    text = (await client.get("/")).text
+    assert "panel-fallback" in text
+    assert "price-rail" not in text
+    assert "best-price" in text
