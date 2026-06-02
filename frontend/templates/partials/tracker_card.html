@@ -45,37 +45,67 @@
                 <span class="status-dot"></span>{{ "Active" if tracker.active else "Paused" }}
             </button>
         </div>
-        <div class="card-mid">
+        <div class="card-panel">
             {% if tracker.spark %}
-            <svg class="spark spark-{{ tracker.spark.trend }}"
-                 viewBox="0 0 {{ tracker.spark.w }} {{ tracker.spark.h }}"
-                 preserveAspectRatio="none" aria-hidden="true">
-                <polygon class="spark-area" points="{{ tracker.spark.area }}"/>
-                <polyline class="spark-line" points="{{ tracker.spark.points }}"/>
-                <circle class="spark-low-dot" cx="{{ tracker.spark.low_x }}" cy="{{ tracker.spark.low_y }}" r="2.2"/>
-                <circle class="spark-dot" cx="{{ tracker.spark.last_x }}" cy="{{ tracker.spark.last_y }}" r="2.2"/>
-                <text class="spark-low-label" x="{{ tracker.spark.low_x }}" y="{{ tracker.spark.label_y }}" text-anchor="middle">{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.spark.low_price) }}</text>
-                <text class="spark-price-label" x="{{ tracker.spark.last_x }}" y="{{ tracker.spark.label_y }}" text-anchor="end">{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.spark.last_price) }}</text>
-            </svg>
-            {% endif %}
-            {% if tracker.historical_best_price is not none %}
-            <div class="alltime">
-                <span class="alltime-label">All-time best</span>
-                <span class="alltime-val">{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.historical_best_price) }}</span>
+            <div class="price-chart-row">
+                <svg class="spark spark-{{ tracker.spark.trend }}"
+                     viewBox="0 0 {{ tracker.spark.w }} {{ tracker.spark.h }}"
+                     preserveAspectRatio="none" aria-hidden="true">
+                    <polygon class="spark-area" points="{{ tracker.spark.area }}"/>
+                    <polyline class="spark-line" points="{{ tracker.spark.points }}"/>
+                    <circle class="spark-low-dot" cx="{{ tracker.spark.low_x }}" cy="{{ tracker.spark.low_y }}" r="2.2"/>
+                    <circle class="spark-dot" cx="{{ tracker.spark.last_x }}" cy="{{ tracker.spark.last_y }}" r="2.2"/>
+                </svg>
+                <div class="price-rail">
+                    {% if tracker.spark.at_all_time_low %}
+                    <div class="rail-stat rail-combined">
+                        <div class="rail-row">
+                            <span class="best-price">{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.best_price) }}</span>
+                            {{ airline_logo(tracker.best_flight_number, tracker.best_flight_number) }}
+                            <small class="filtered-tag" style="display:none">filtered</small>
+                        </div>
+                        <span class="rail-cap">All-time low &middot; now</span>
+                    </div>
+                    {% else %}
+                    <div class="rail-stat rail-current" style="top:{{ (tracker.spark.current_rail*100)|round(2) }}%">
+                        <div class="rail-row">
+                            <span class="rail-dot current"></span>
+                            <span class="best-price">{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.best_price) }}</span>
+                            {{ airline_logo(tracker.best_flight_number, tracker.best_flight_number) }}
+                            <small class="filtered-tag" style="display:none">filtered</small>
+                        </div>
+                        <span class="rail-cap">Current best</span>
+                    </div>
+                    <div class="rail-stat rail-alltime" style="top:{{ (tracker.spark.alltime_rail*100)|round(2) }}%">
+                        <div class="rail-row">
+                            <span class="rail-dot alltime"></span>
+                            <span class="rail-price">{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.spark.low_price) }}</span>
+                        </div>
+                        <span class="rail-cap">All-time best</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% else %}
+            <div class="panel-fallback">
+                <span class="rail-cap">Current best</span>
+                <div class="rail-row">
+                    <span class="best-price">
+                        {%- if tracker.best_price is not none -%}
+                            {{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.best_price) }}
+                        {%- else -%}&mdash;{%- endif -%}
+                    </span>
+                    {{ airline_logo(tracker.best_flight_number, tracker.best_flight_number) }}
+                    <small class="filtered-tag" style="display:none">filtered</small>
+                </div>
+                {% if tracker.historical_best_price is not none %}
+                <div class="fallback-alltime">
+                    <span class="rail-cap">All-time best</span>
+                    <span class="rail-price">{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.historical_best_price) }}</span>
+                </div>
+                {% endif %}
             </div>
             {% endif %}
-        </div>
-        <div class="card-right">
-            <span class="card-price-label">Current best</span>
-            <div class="price-main">
-                <span class="best-price">
-                    {%- if tracker.best_price is not none -%}
-                        {{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.best_price) }}
-                    {%- else -%}&mdash;{%- endif -%}
-                </span>
-                {{ airline_logo(tracker.best_flight_number, tracker.best_flight_number) }}
-                <small class="filtered-tag" style="display:none">filtered</small>
-            </div>
             {% if tracker.best_price is not none %}
             <div class="evo-strip">
                 {{ evo_cell('Start', tracker.delta_creation, tracker.currency) }}

@@ -162,7 +162,7 @@ h1 {
 
 .card-grid {
     display: grid;
-    grid-template-columns: 33% 1fr 1fr;
+    grid-template-columns: minmax(150px, 0.8fr) 1.2fr;
 }
 
 /* Left: route, date, status */
@@ -247,48 +247,8 @@ h1 {
 .status-toggle.active:hover { background: #ddefe5; }
 .status-toggle.paused:hover { background: #eceff2; }
 
-/* Middle: sparkline + all-time price */
-.card-mid {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 0.55rem;
-    padding: 0.9rem 0.85rem 0.75rem;
-    border-left: 1px solid var(--line-soft);
-}
-
-.card-mid .spark {
-    width: 100%;
-    aspect-ratio: 132 / 45;
-    display: block;
-    flex-shrink: 0;
-}
-
-.alltime {
-    display: flex;
-    flex-direction: column;
-    gap: 0.1rem;
-}
-
-.alltime-label {
-    font-size: 0.6rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--ink-faint);
-}
-
-.alltime-val {
-    font-family: var(--font-mono);
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--ink-soft);
-    font-variant-numeric: tabular-nums;
-    letter-spacing: -0.01em;
-}
-
-/* Right: current price */
-.card-right {
+/* Right panel: chart row + rail + evo-strip */
+.card-panel {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
@@ -296,12 +256,121 @@ h1 {
     border-left: 1px solid var(--line-soft);
 }
 
-.card-price-label {
-    font-size: 0.72rem;
-    font-weight: 700;
-    color: var(--ink-soft);
+.price-chart-row {
+    display: flex;
+    position: relative;
+    height: 76px;
+    gap: 0.5rem;
+}
+
+.price-chart-row .spark {
+    flex: 1;
+    height: 100%;
+    aspect-ratio: auto;
+}
+
+.price-rail {
+    position: relative;
+    width: 104px;
+    flex-shrink: 0;
+}
+
+.rail-stat {
+    position: absolute;
+    right: 0;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.1rem;
+}
+
+.rail-row {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.rail-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.rail-dot.current { background: var(--ink); }
+.rail-dot.alltime { background: var(--good); }
+
+.rail-current .best-price {
+    font-family: var(--font-mono);
+    font-size: 1.2rem;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+}
+
+.rail-alltime .rail-price {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--good);
+    font-variant-numeric: tabular-nums;
+}
+
+.rail-cap {
+    font-size: 0.55rem;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.07em;
+    color: var(--ink-faint);
+}
+
+.rail-combined {
+    position: absolute;
+    top: 50%;
+    right: 0;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.1rem;
+}
+
+.rail-combined .best-price {
+    font-family: var(--font-mono);
+    font-size: 1.2rem;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: var(--good);
+    font-variant-numeric: tabular-nums;
+}
+
+.rail-combined .rail-cap { color: var(--good); }
+
+.panel-fallback {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.5rem 0;
+}
+
+.panel-fallback .best-price {
+    font-family: var(--font-mono);
+    font-size: 1.85rem;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+}
+
+.fallback-alltime {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
 }
 
 .price-main {
@@ -353,36 +422,17 @@ h1 {
 }
 
 .spark-area { opacity: 0.07; stroke: none; }
-.spark-dot { stroke: #fff; stroke-width: 1.2; }
+.spark-dot { fill: var(--ink); stroke: #fff; stroke-width: 1.2; }
 .spark-low-dot { fill: var(--good); stroke: #fff; stroke-width: 1.2; }
-.spark-low-label { fill: var(--good); font-size: 8px; font-weight: 500; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
-.spark-down .spark-line,
-.spark-down .spark-dot { stroke: var(--good); }
-.spark-down .spark-area,
-.spark-down .spark-dot { fill: var(--good); }
+.spark-down .spark-line { stroke: var(--good); }
+.spark-down .spark-area { fill: var(--good); }
 
-.spark-up .spark-line,
-.spark-up .spark-dot { stroke: var(--bad); }
-.spark-up .spark-area,
-.spark-up .spark-dot { fill: var(--bad); }
+.spark-up .spark-line { stroke: var(--bad); }
+.spark-up .spark-area { fill: var(--bad); }
 
-.spark-flat .spark-line,
-.spark-flat .spark-dot { stroke: var(--ink-faint); }
-.spark-flat .spark-area,
-.spark-flat .spark-dot { fill: var(--ink-faint); }
-
-.spark-price-label {
-    font-size: 8px;
-    font-weight: 500;
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
-    opacity: 0.75;
-}
-
-.spark-down .spark-price-label { fill: var(--good); }
-.spark-up   .spark-price-label { fill: var(--bad); }
-.spark-flat .spark-price-label { fill: var(--ink-faint); }
+.spark-flat .spark-line { stroke: var(--ink-faint); }
+.spark-flat .spark-area { fill: var(--ink-faint); }
 
 /* Evolution strip */
 .evo-strip {
@@ -824,14 +874,9 @@ h1 {
         grid-template-columns: 1fr;
     }
 
-    .card-mid,
-    .card-right {
+    .card-panel {
         border-left: none;
         border-top: 1px solid var(--line-soft);
-    }
-
-    .card-mid .spark {
-        aspect-ratio: 132 / 34;
     }
 
     .detail-controls {
