@@ -323,3 +323,90 @@ async def test_missing_row_has_no_row_color(client):
     response = await client.get("/trackers/1")
     assert 'data-flight-key="test|VY|6201|2026-01-01T00:00:00"' in response.text
     assert response.text.count("row-colored") == 1
+
+
+# === Plan 012: tracker card polish ===
+# Fail-first tests pinning the redesigned card (labels, date, one-way tag) and
+# the tightened currency symbol. They fail against the current implementation.
+
+async def _seed_card(client, depart_date="2026-09-15", price=100.0):
+    """One tracker + one snapshot + one priced flight, so the dashboard card
+    renders a best price and an all-time best."""
+    from backend.db import create_snapshot, insert_flight_prices
+    await client.post("/api/trackers", json={
+        "origin": "GVA", "destination": "BCN", "depart_date": depart_date,
+    })
+    snapshot = await create_snapshot(1, results_count=1)
+    await insert_flight_prices(snapshot["id"], 1, [{
+        "flight_key": "test|VY|6201|2026-01-01T00:00:00",
+        "source": "test", "price": price, "currency": "EUR",
+        "airline": "Vueling", "flight_number": "VY 6201",
+    }])
+
+
+# --- Phase 2: labels, date, one-way ---
+
+@pytest.mark.asyncio
+async def test_card_label_drops_word_price(client):
+    await _seed_card(client)
+    text = (await client.get("/")).text
+    assert "Current best price" not in text
+    assert "All-time best price" not in text
+    assert "Current best" in text
+    assert "All-time best" in text
+
+
+@pytest.mark.asyncio
+async def test_card_date_includes_weekday(client):
+    import datetime
+    await _seed_card(client, depart_date="2026-07-29")
+    text = (await client.get("/")).text
+    weekday = datetime.date(2026, 7, 29).strftime("%a")   # e.g. "Wed"
+    assert weekday in text
+    assert "July 29" not in text   # the old month-first format is gone
+
+
+@pytest.mark.asyncio
+async def test_card_shows_one_way_tag(client):
+    await client.post("/api/trackers", json={
+        "origin": "GVA", "destination": "BCN", "depart_date": "2026-09-15",
+    })
+    text = (await client.get("/")).text
+    assert "one-way" in text
+
+
+def test_format_card_date_filter_unit():
+    import datetime
+    from backend.pages import _format_card_date
+    result = _format_card_date("2026-07-29")
+    weekday = datetime.date(2026, 7, 29).strftime("%a")
+    assert result.startswith(weekday)
+    assert "29" in result
+    assert "Jul" in result
+    # malformed input passes through unchanged (mirrors _format_date)
+    assert _format_card_date("not-a-date") == "not-a-date"
+
+
+# --- Phase 3: currency symbol spacing ---
+
+def test_currency_symbol_eur_has_no_trailing_space():
+    from backend.pages import _env
+    assert _env.filters["currency_symbol"]("EUR") == "€"
+
+
+def test_currency_symbol_chf_keeps_space():
+    from backend.pages import _env
+    assert _env.filters["currency_symbol"]("CHF") == "CHF "
+
+
+def test_unknown_currency_still_separated():
+    from backend.pages import _env
+    assert _env.filters["currency_symbol"]("XYZ").endswith(" ")
+
+
+@pytest.mark.asyncio
+async def test_card_price_has_no_space_after_symbol(client):
+    await _seed_card(client, price=100.0)
+    text = (await client.get("/")).text
+    assert "€100" in text
+    assert "€ 100" not in text

@@ -1,16 +1,16 @@
 {% for log in logs %}
 <tr class="log-row log-{{ log.level | lower }}">
+    <td class="log-id">#{{ log.id }}</td>
     <td class="log-level">{{ log.level }}</td>
     <td class="log-event">{{ log.event }}</td>
     <td class="log-tracker">
         {% if log.tracker_id %}
-            {% if log.origin %}{{ log.origin }} → {{ log.destination }}{% if log.tracker_depart_date %}, {{ log.tracker_depart_date | format_date }}{% endif %}{% else %}#{{ log.tracker_id }}{% endif %}
-        {% else %}—{% endif %}
+            <span class="log-tid">#{{ log.tracker_id }}</span>
+            {% if log.origin %}<span class="log-route">{{ log.origin }} &rarr; {{ log.destination }}{% if log.tracker_depart_date %}, {{ log.tracker_depart_date | format_date }}{% endif %}</span>{% endif %}
+        {% else %}&mdash;{% endif %}
     </td>
     <td class="log-message">{{ log.message or "" }}</td>
-    <td class="log-time" data-utc="{{ log.created_at }}">
-        <span class="log-date">—</span>
-        <span class="log-hour">—</span>
-    </td>
+    <td class="log-date" data-utc="{{ log.created_at }}">—</td>
+    <td class="log-hour" data-utc="{{ log.created_at }}">—</td>
 </tr>
 {% endfor %}
