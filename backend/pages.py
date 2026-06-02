@@ -172,14 +172,19 @@ def _sparkline(prices: list[float], w: int = 132, h: int = 34, pad: int = 4) -> 
     area = f"{coords[0][0]},{h} {line} {coords[-1][0]},{h}"
     first, last = pts[0], pts[-1]
     trend = "down" if last < first else "up" if last > first else "flat"
+    label_h = 11
     return {
         "points": line,
         "area": area,
+        "first_x": coords[0][0],
+        "first_price": first,
         "last_x": coords[-1][0],
         "last_y": coords[-1][1],
+        "last_price": last,
+        "label_y": h + label_h - 2,
         "trend": trend,
         "w": w,
-        "h": h,
+        "h": h + label_h,
     }
 
 
