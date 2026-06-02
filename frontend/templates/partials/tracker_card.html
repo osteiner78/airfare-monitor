@@ -85,6 +85,7 @@
                         <div class="rail-row">
                             <span class="rail-dot alltime"></span>
                             <span class="rail-price">{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.spark.low_price) }}</span>
+                            {{ airline_logo(tracker.historical_best_flight_number, tracker.historical_best_flight_number) }}
                         </div>
                     </div>
                     {% endif %}
@@ -105,7 +106,10 @@
                 {% if tracker.historical_best_price is not none %}
                 <div class="fallback-alltime">
                     <span class="rail-cap">All-time best</span>
-                    <span class="rail-price">{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.historical_best_price) }}</span>
+                    <div class="rail-row">
+                        <span class="rail-price">{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.historical_best_price) }}</span>
+                        {{ airline_logo(tracker.historical_best_flight_number, tracker.historical_best_flight_number) }}
+                    </div>
                 </div>
                 {% endif %}
             </div>

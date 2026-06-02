@@ -28,7 +28,7 @@ body {
 }
 
 .container {
-    max-width: 960px;
+    max-width: 840px;
     margin: 0 auto;
     padding: 2rem 1rem;
 }
@@ -171,9 +171,8 @@ h1 {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    justify-content: center;
-    gap: 0.75rem;
-    padding: 1.1rem 1.25rem;
+    justify-content: flex-start;
+    padding: 1rem 1.25rem;
 }
 
 .card-route {
@@ -284,30 +283,28 @@ h1 {
     flex-direction: column;
     gap: 0.5rem;
     padding: 0.75rem 1rem 0.75rem;
-    border-left: 1px solid var(--line-soft);
 }
 
 .price-chart-row {
     display: flex;
     position: relative;
-    height: 96px;
+    height: 112px;
     gap: 0.75rem;
 }
 
 .price-chart-row .spark {
+    flex: 1;
     height: 100%;
-    width: auto;
-    aspect-ratio: 132 / 34;
-    flex: none;
+    min-width: 0;
 }
 
 .price-rail {
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    width: 112px;
+    width: 116px;
     flex-shrink: 0;
-    padding: 4px 0;
+    padding: 8px 0;
 }
 
 .price-rail--combined {

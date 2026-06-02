@@ -302,6 +302,15 @@ async def get_tracker_summaries() -> list:
                        FROM flight_prices fp2
                        WHERE fp2.tracker_id = t.id
                       ) AS historical_best_price,
+                      (SELECT fp2.flight_number
+                       FROM flight_prices fp2
+                       JOIN snapshots s2 ON fp2.snapshot_id = s2.id
+                       WHERE fp2.tracker_id = t.id
+                         AND fp2.price = (SELECT MIN(fp3.price)
+                                          FROM flight_prices fp3
+                                          WHERE fp3.tracker_id = t.id)
+                       ORDER BY s2.searched_at DESC LIMIT 1
+                      ) AS historical_best_flight_number,
                       (SELECT MIN(fp.price)
                        FROM flight_prices fp
                        JOIN snapshots s ON fp.snapshot_id = s.id
