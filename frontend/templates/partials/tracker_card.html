@@ -1,72 +1,92 @@
 {% from "partials/macros.html" import airline_logo %}
-{% macro delta_val(d, currency) %}
-    {% if d %}
-        {% if d.type == 'down' %}<span class="delta-val down">&darr; {{ currency | currency_symbol }}{{ "%.0f"|format(d.amount) }}</span>
-        {% elif d.type == 'up' %}<span class="delta-val up">&uarr; {{ currency | currency_symbol }}{{ "%.0f"|format(d.amount) }}</span>
-        {% else %}<span class="delta-val same">&mdash;</span>{% endif %}
-    {% else %}<span class="delta-val none">&mdash;</span>{% endif %}
+{% macro evo_cell(label, d, currency) %}
+<div class="evo-cell">
+    <span class="evo-label">{{ label }}</span>
+    {% if d and d.type == 'down' %}
+        <span class="evo-val down">&darr;&thinsp;{{ currency | currency_symbol }}{{ "%.0f"|format(d.amount) }}</span>
+    {% elif d and d.type == 'up' %}
+        <span class="evo-val up">&uarr;&thinsp;{{ currency | currency_symbol }}{{ "%.0f"|format(d.amount) }}</span>
+    {% elif d and d.type == 'same' %}
+        <span class="evo-val same">&mdash;</span>
+    {% else %}
+        <span class="evo-val none">&mdash;</span>
+    {% endif %}
+</div>
 {% endmacro %}
 <div class="tracker-card" id="card-{{ tracker.id }}">
-    <div class="card-inner">
-        <div class="card-left"
-             hx-get="/trackers/{{ tracker.id }}"
-             hx-push-url="true"
-             hx-target="body"
-             hx-swap="innerHTML">
-            <span class="route">{{ tracker.origin }} &rarr; {{ tracker.destination }}</span>
-            <span class="date">{{ tracker.depart_date | format_date }}</span>
-        </div>
-        <div class="card-right">
-            <div class="card-price-col">
-                <span class="card-price-label">Current best price</span>
-                <div class="price-logo-row">
-                    <span class="best-price">
-                        {% if tracker.best_price is not none %}
-                            {{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.best_price) }}
-                        {% else %}
-                            &mdash;
-                        {% endif %}
-                    </span>
-                    {{ airline_logo(tracker.best_flight_number, tracker.best_flight_number) }}
-                </div>
-                <small class="filtered-tag" style="display:none">(filtered)</small>
-                {% if tracker.best_price is not none %}
-                <div class="delta-grid">
-                    <span class="delta-period">start</span>
-                    <span class="delta-period">24h</span>
-                    <span class="delta-period">3h</span>
-                    {{ delta_val(tracker.delta_creation, tracker.currency) }}
-                    {{ delta_val(tracker.delta_24h, tracker.currency) }}
-                    {{ delta_val(tracker.delta_3h, tracker.currency) }}
-                </div>
-                {% endif %}
-                <span class="last-checked" data-iso="{{ tracker.last_searched_at or '' }}">
-                    {% if tracker.last_searched_at %}{{ tracker.last_searched_at }}{% else %}Never{% endif %}
-                </span>
-                {% if tracker.historical_best_price is not none %}
-                <span class="card-hist">All-time: {{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.historical_best_price) }}</span>
-                {% endif %}
+    <button class="card-delete"
+            title="Delete tracker"
+            aria-label="Delete tracker"
+            hx-delete="/trackers/{{ tracker.id }}"
+            hx-target="#tracker-list"
+            hx-swap="innerHTML"
+            hx-confirm="Delete this tracker?">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 6h18"/>
+            <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+        </svg>
+    </button>
+    <div class="card-grid">
+        <div class="card-left">
+            <div class="card-route"
+                 hx-get="/trackers/{{ tracker.id }}"
+                 hx-push-url="true"
+                 hx-target="body"
+                 hx-swap="innerHTML">
+                <span class="route">{{ tracker.origin }}<span class="route-arrow">&rarr;</span>{{ tracker.destination }}</span>
+                <span class="date">{{ tracker.depart_date | format_date }}</span>
             </div>
-        </div>
-    </div>
-    <div class="card-footer">
-        <div class="card-actions">
             <button class="status-toggle {% if tracker.active %}active{% else %}paused{% endif %}"
                     hx-patch="/trackers/{{ tracker.id }}/toggle"
                     hx-target="#card-{{ tracker.id }}"
                     hx-swap="outerHTML">
-                {{ "Active" if tracker.active else "Paused" }}
+                <span class="status-dot"></span>{{ "Active" if tracker.active else "Paused" }}
             </button>
-            {% if tracker.recent_alerts and tracker.recent_alerts > 0 %}
-            <span class="badge alert-count">{{ tracker.recent_alerts }}</span>
+        </div>
+        <div class="card-right">
+            <div class="price-head">
+                <span class="card-price-label">Current best</span>
+                {% if tracker.spark %}
+                <svg class="spark spark-{{ tracker.spark.trend }}"
+                     viewBox="0 0 {{ tracker.spark.w }} {{ tracker.spark.h }}"
+                     width="{{ tracker.spark.w }}" height="{{ tracker.spark.h }}"
+                     preserveAspectRatio="none" aria-hidden="true">
+                    <polygon class="spark-area" points="{{ tracker.spark.area }}"/>
+                    <polyline class="spark-line" points="{{ tracker.spark.points }}"/>
+                    <circle class="spark-dot" cx="{{ tracker.spark.last_x }}" cy="{{ tracker.spark.last_y }}" r="2.2"/>
+                </svg>
+                {% endif %}
+            </div>
+            <div class="price-main">
+                <span class="best-price">
+                    {%- if tracker.best_price is not none -%}
+                        {{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.best_price) }}
+                    {%- else -%}&mdash;{%- endif -%}
+                </span>
+                {{ airline_logo(tracker.best_flight_number, tracker.best_flight_number) }}
+                <small class="filtered-tag" style="display:none">filtered</small>
+            </div>
+            {% if tracker.best_price is not none %}
+            <div class="evo-strip">
+                {{ evo_cell('Start', tracker.delta_creation, tracker.currency) }}
+                {{ evo_cell('24h', tracker.delta_24h, tracker.currency) }}
+                {{ evo_cell('3h', tracker.delta_3h, tracker.currency) }}
+            </div>
             {% endif %}
-            <button class="danger"
-                    hx-delete="/trackers/{{ tracker.id }}"
-                    hx-target="#tracker-list"
-                    hx-swap="innerHTML"
-                    hx-confirm="Delete this tracker?">
-                Delete
-            </button>
+            <div class="card-meta">
+                {% if tracker.historical_best_price is not none %}
+                <span class="meta-item">All-time <strong>{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.historical_best_price) }}</strong></span>
+                <span class="meta-dot">&middot;</span>
+                {% endif %}
+                <span class="meta-item last-checked" data-iso="{{ tracker.last_searched_at or '' }}">
+                    {%- if tracker.last_searched_at %}{{ tracker.last_searched_at }}{% else %}Never{% endif -%}
+                </span>
+                {% if tracker.recent_alerts and tracker.recent_alerts > 0 %}
+                <span class="badge alert-count">{{ tracker.recent_alerts }} alert{{ 's' if tracker.recent_alerts > 1 else '' }}</span>
+                {% endif %}
+            </div>
         </div>
     </div>
 </div>

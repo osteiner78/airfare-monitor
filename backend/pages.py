@@ -183,8 +183,8 @@ def _sparkline(prices: list[float], w: int = 132, h: int = 34, pad: int = 4) -> 
     }
 
 
-async def _enrich_summaries(summaries: list) -> list:
-    series = await get_best_price_series()
+def _enrich_summaries(summaries: list, series: dict[int, list[float]] | None = None) -> list:
+    series = series or {}
     for s in summaries:
         best = s.get("best_price")
         s["price_delta"] = _compute_delta(best, s.get("previous_best_price"))
@@ -198,7 +198,7 @@ async def _enrich_summaries(summaries: list) -> list:
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     summaries = await get_tracker_summaries()
-    summaries = await _enrich_summaries(summaries)
+    summaries = _enrich_summaries(summaries, await get_best_price_series())
     return _render("dashboard.html", {"request": request, "trackers": summaries})
 
 
@@ -218,7 +218,7 @@ async def add_tracker(request: Request):
     await backend.scheduler.search_and_store(tracker["id"])
     backend.scheduler.add_tracker_job(tracker["id"], tracker["interval_minutes"], run_immediately=False)
 
-    summaries = _enrich_summaries(await get_tracker_summaries())
+    summaries = _enrich_summaries(await get_tracker_summaries(), await get_best_price_series())
     return _render("partials/tracker_list.html", {"request": request, "trackers": summaries})
 
 
@@ -238,7 +238,7 @@ async def toggle_tracker(request: Request, tracker_id: int):
         backend.scheduler.remove_tracker_job(tracker_id)
         await insert_log("INFO", "tracker_paused", tracker_id=tracker_id)
 
-    summaries = _enrich_summaries(await get_tracker_summaries())
+    summaries = _enrich_summaries(await get_tracker_summaries(), await get_best_price_series())
     updated = next((s for s in summaries if s["id"] == tracker_id), None)
     if updated is None:
         raise HTTPException(status_code=404, detail="Tracker not found")
@@ -434,7 +434,7 @@ async def delete_tracker_card(request: Request, tracker_id: int):
         await insert_log("INFO", "tracker_deleted", tracker_id=tracker_id,
                          message=f"{tracker['origin']} -> {tracker['destination']}")
 
-    summaries = _enrich_summaries(await get_tracker_summaries())
+    summaries = _enrich_summaries(await get_tracker_summaries(), await get_best_price_series())
     return _render("partials/tracker_list.html", {"request": request, "trackers": summaries})
 
 
@@ -476,7 +476,7 @@ async def refresh_all(request: Request):
         if tracker["active"]:
             await backend.scheduler.search_and_store(tracker["id"])
 
-    summaries = _enrich_summaries(await get_tracker_summaries())
+    summaries = _enrich_summaries(await get_tracker_summaries(), await get_best_price_series())
     return _render("dashboard.html", {"request": request, "trackers": summaries})
 
 
