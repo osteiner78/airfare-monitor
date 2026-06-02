@@ -93,6 +93,17 @@ def _format_date(date_str: str) -> str:
 
 _env.filters["format_date"] = _format_date
 
+
+def _format_card_date(date_str: str) -> str:
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        return dt.strftime("%a %-d %b")
+    except (ValueError, TypeError):
+        return date_str
+
+
+_env.filters["format_card_date"] = _format_card_date
+
 LOGO_UNAVAILABLE_CODES: set[str] = set()
 
 _IATA_RE = re.compile(r"^[A-Z0-9]{2}$")
@@ -111,7 +122,7 @@ def _airline_code(flight_number: str | None) -> str:
 
 _env.filters["airline_code"] = _airline_code
 
-_CURRENCY_SYMBOLS: dict[str, str] = {"EUR": "€ ", "USD": "$ ", "GBP": "£ ", "CHF": "CHF "}
+_CURRENCY_SYMBOLS: dict[str, str] = {"EUR": "€", "USD": "$", "GBP": "£", "CHF": "CHF "}
 _env.filters["currency_symbol"] = lambda c: _CURRENCY_SYMBOLS.get(c or "", (c or "") + " ")
 
 

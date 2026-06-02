@@ -36,7 +36,7 @@
                  hx-target="body"
                  hx-swap="innerHTML">
                 <span class="route">{{ tracker.origin }}<span class="route-arrow">&rarr;</span>{{ tracker.destination }}</span>
-                <span class="date">{{ tracker.depart_date | format_date }}</span>
+                <span class="date">{{ tracker.depart_date | format_card_date }} &middot; one-way</span>
             </div>
             <button class="status-toggle {% if tracker.active %}active{% else %}paused{% endif %}"
                     hx-patch="/trackers/{{ tracker.id }}/toggle"
@@ -66,7 +66,7 @@
             {% endif %}
         </div>
         <div class="card-right">
-            <span class="card-price-label">Current best price</span>
+            <span class="card-price-label">Current best</span>
             <div class="price-main">
                 <span class="best-price">
                     {%- if tracker.best_price is not none -%}
