@@ -301,12 +301,56 @@ async def get_tracker_summaries() -> list:
                       (SELECT MIN(fp2.price)
                        FROM flight_prices fp2
                        WHERE fp2.tracker_id = t.id
-                      ) AS historical_best_price
+                      ) AS historical_best_price,
+                      (SELECT MIN(fp.price)
+                       FROM flight_prices fp
+                       JOIN snapshots s ON fp.snapshot_id = s.id
+                       WHERE fp.tracker_id = t.id
+                         AND s.id = (SELECT id FROM snapshots
+                                     WHERE tracker_id = t.id
+                                     ORDER BY searched_at ASC LIMIT 1)
+                      ) AS best_price_at_creation,
+                      (SELECT MIN(fp.price)
+                       FROM flight_prices fp
+                       JOIN snapshots s ON fp.snapshot_id = s.id
+                       WHERE fp.tracker_id = t.id
+                         AND s.id = (SELECT id FROM snapshots
+                                     WHERE tracker_id = t.id
+                                       AND searched_at <= datetime('now', '-24 hours')
+                                     ORDER BY searched_at DESC LIMIT 1)
+                      ) AS best_price_24h_ago,
+                      (SELECT MIN(fp.price)
+                       FROM flight_prices fp
+                       JOIN snapshots s ON fp.snapshot_id = s.id
+                       WHERE fp.tracker_id = t.id
+                         AND s.id = (SELECT id FROM snapshots
+                                     WHERE tracker_id = t.id
+                                       AND searched_at <= datetime('now', '-3 hours')
+                                     ORDER BY searched_at DESC LIMIT 1)
+                      ) AS best_price_3h_ago
                FROM trackers t
                ORDER BY t.id""",
         ) as cur:
             rows = await cur.fetchall()
     return [_row_to_dict(r) for r in rows]
+
+
+async def get_best_price_series() -> dict[int, list[float]]:
+    db_path = get_db_path()
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT s.tracker_id AS tracker_id, MIN(fp.price) AS best
+               FROM snapshots s
+               JOIN flight_prices fp ON fp.snapshot_id = s.id
+               GROUP BY s.id
+               ORDER BY s.tracker_id, s.searched_at ASC"""
+        ) as cur:
+            rows = await cur.fetchall()
+    series: dict[int, list[float]] = {}
+    for r in rows:
+        series.setdefault(r["tracker_id"], []).append(r["best"])
+    return series
 
 
 async def create_notification(tracker_id: int, rule_type: str, threshold: float) -> dict:

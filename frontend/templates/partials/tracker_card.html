@@ -1,4 +1,11 @@
 {% from "partials/macros.html" import airline_logo %}
+{% macro delta_val(d, currency) %}
+    {% if d %}
+        {% if d.type == 'down' %}<span class="delta-val down">&darr; {{ currency | currency_symbol }}{{ "%.0f"|format(d.amount) }}</span>
+        {% elif d.type == 'up' %}<span class="delta-val up">&uarr; {{ currency | currency_symbol }}{{ "%.0f"|format(d.amount) }}</span>
+        {% else %}<span class="delta-val same">&mdash;</span>{% endif %}
+    {% else %}<span class="delta-val none">&mdash;</span>{% endif %}
+{% endmacro %}
 <div class="tracker-card" id="card-{{ tracker.id }}">
     <div class="card-inner">
         <div class="card-left"
@@ -11,6 +18,7 @@
         </div>
         <div class="card-right">
             <div class="card-price-col">
+                <span class="card-price-label">Current best price</span>
                 <div class="price-logo-row">
                     <span class="best-price">
                         {% if tracker.best_price is not none %}
@@ -22,42 +30,36 @@
                     {{ airline_logo(tracker.best_flight_number, tracker.best_flight_number) }}
                 </div>
                 <small class="filtered-tag" style="display:none">(filtered)</small>
-                {% if tracker.price_delta %}
-                <span class="card-delta {% if tracker.price_delta.type == 'down' %}down{% elif tracker.price_delta.type == 'up' %}up{% elif tracker.price_delta.type == 'same' %}same{% endif %}">
-                    {% if tracker.price_delta.type == 'down' %}&darr; -{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.price_delta.amount) }}
-                    {% elif tracker.price_delta.type == 'up' %}&uarr; +{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.price_delta.amount) }}
-                    {% elif tracker.price_delta.type == 'same' %}&mdash;
-                    {% endif %}
-                </span>
+                {% if tracker.best_price is not none %}
+                <div class="delta-grid">
+                    <span class="delta-period">start</span>
+                    <span class="delta-period">24h</span>
+                    <span class="delta-period">3h</span>
+                    {{ delta_val(tracker.delta_creation, tracker.currency) }}
+                    {{ delta_val(tracker.delta_24h, tracker.currency) }}
+                    {{ delta_val(tracker.delta_3h, tracker.currency) }}
+                </div>
                 {% endif %}
+                <span class="last-checked" data-iso="{{ tracker.last_searched_at or '' }}">
+                    {% if tracker.last_searched_at %}{{ tracker.last_searched_at }}{% else %}Never{% endif %}
+                </span>
                 {% if tracker.historical_best_price is not none %}
-                <span class="card-hist">All-time best: {{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.historical_best_price) }}</span>
+                <span class="card-hist">All-time: {{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.historical_best_price) }}</span>
                 {% endif %}
             </div>
         </div>
     </div>
     <div class="card-footer">
-        <div class="card-status-left">
-            <span class="badge {% if tracker.active %}active{% else %}paused{% endif %}">
+        <div class="card-actions">
+            <button class="status-toggle {% if tracker.active %}active{% else %}paused{% endif %}"
+                    hx-patch="/trackers/{{ tracker.id }}/toggle"
+                    hx-target="#card-{{ tracker.id }}"
+                    hx-swap="outerHTML">
                 {{ "Active" if tracker.active else "Paused" }}
-            </span>
+            </button>
             {% if tracker.recent_alerts and tracker.recent_alerts > 0 %}
             <span class="badge alert-count">{{ tracker.recent_alerts }}</span>
             {% endif %}
-            <span class="last-checked" data-iso="{{ tracker.last_searched_at or '' }}">
-                {% if tracker.last_searched_at %}
-                    {{ tracker.last_searched_at }}
-                {% else %}
-                    Never
-                {% endif %}
-            </span>
-        </div>
-        <div class="card-actions">
-            <button hx-patch="/trackers/{{ tracker.id }}/toggle"
-                    hx-target="#card-{{ tracker.id }}"
-                    hx-swap="outerHTML">
-                {{ "Pause" if tracker.active else "Resume" }}
-            </button>
             <button class="danger"
                     hx-delete="/trackers/{{ tracker.id }}"
                     hx-target="#tracker-list"

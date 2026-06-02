@@ -11,6 +11,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from backend.db import (
     create_tracker,
     delete_tracker,
+    get_best_price_series,
     get_db_stats,
     get_flight_prices_for_snapshot,
     get_historical_best_price,
@@ -140,26 +141,64 @@ def _split_timestamps(flight_dict: dict) -> None:
     flight_dict["arrival_day_offset"] = offset
 
 
-def _enrich_summaries(summaries: list) -> list:
+def _compute_delta(current: float | None, reference: float | None) -> dict | None:
+    if current is None or reference is None:
+        return None
+    if current < reference:
+        return {"type": "down", "amount": round(reference - current, 2)}
+    if current > reference:
+        return {"type": "up", "amount": round(current - reference, 2)}
+    return {"type": "same"}
+
+
+def _sparkline(prices: list[float], w: int = 132, h: int = 34, pad: int = 4) -> dict | None:
+    pts = [p for p in prices if p is not None]
+    if len(pts) < 2:
+        return None
+    lo, hi = min(pts), max(pts)
+    span = hi - lo
+    n = len(pts)
+
+    def x(i: int) -> float:
+        return round(pad + (w - 2 * pad) * i / (n - 1), 1)
+
+    def y(p: float) -> float:
+        if span == 0:
+            return round(h / 2, 1)
+        return round(pad + (h - 2 * pad) * (1 - (p - lo) / span), 1)
+
+    coords = [(x(i), y(p)) for i, p in enumerate(pts)]
+    line = " ".join(f"{cx},{cy}" for cx, cy in coords)
+    area = f"{coords[0][0]},{h} {line} {coords[-1][0]},{h}"
+    first, last = pts[0], pts[-1]
+    trend = "down" if last < first else "up" if last > first else "flat"
+    return {
+        "points": line,
+        "area": area,
+        "last_x": coords[-1][0],
+        "last_y": coords[-1][1],
+        "trend": trend,
+        "w": w,
+        "h": h,
+    }
+
+
+async def _enrich_summaries(summaries: list) -> list:
+    series = await get_best_price_series()
     for s in summaries:
-        delta = None
         best = s.get("best_price")
-        prev = s.get("previous_best_price")
-        if best is not None and prev is not None:
-            if best < prev:
-                delta = {"type": "down", "amount": round(prev - best, 2)}
-            elif best > prev:
-                delta = {"type": "up", "amount": round(best - prev, 2)}
-            else:
-                delta = {"type": "same"}
-        s["price_delta"] = delta
+        s["price_delta"] = _compute_delta(best, s.get("previous_best_price"))
+        s["delta_creation"] = _compute_delta(best, s.get("best_price_at_creation"))
+        s["delta_24h"] = _compute_delta(best, s.get("best_price_24h_ago"))
+        s["delta_3h"] = _compute_delta(best, s.get("best_price_3h_ago"))
+        s["spark"] = _sparkline(series.get(s["id"], []))
     return summaries
 
 
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     summaries = await get_tracker_summaries()
-    summaries = _enrich_summaries(summaries)
+    summaries = await _enrich_summaries(summaries)
     return _render("dashboard.html", {"request": request, "trackers": summaries})
 
 
