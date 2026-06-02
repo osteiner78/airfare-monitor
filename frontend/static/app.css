@@ -16,6 +16,8 @@
     --good-bg: #e7f5ee;
     --bad: #c0392b;
     --bad-bg: #fbeae8;
+    --accent: #4a90d9;
+    --accent-dark: #3a7bc8;
 }
 
 body {
@@ -63,15 +65,23 @@ h1 {
 }
 
 .monitor-link {
+    display: inline-block;
+    padding: 0.4rem 0.75rem;
+    background: #f0f0f0;
+    border: 1px solid #ccc;
+    border-radius: 4px;
     font-size: 0.8125rem;
-    color: #888;
+    color: var(--ink-soft);
     text-decoration: none;
+    cursor: pointer;
+    transition: background 0.15s;
     margin-left: auto;
 }
 
 .monitor-link:hover {
-    color: #4a90d9;
-    text-decoration: underline;
+    background: #e0e0e0;
+    color: var(--ink);
+    text-decoration: none;
 }
 
 .empty-state {
@@ -111,13 +121,18 @@ h1 {
 
 .form-row input:focus {
     outline: none;
-    border-color: #4a90d9;
+    border-color: var(--accent);
     box-shadow: 0 0 0 2px rgba(74, 144, 217, 0.2);
+}
+
+.form-row input[type="date"] {
+    -webkit-appearance: none;
+    appearance: none;
 }
 
 .form-row button {
     padding: 0.5rem 1rem;
-    background: #4a90d9;
+    background: var(--accent);
     color: #fff;
     border: none;
     border-radius: 4px;
@@ -127,7 +142,7 @@ h1 {
 }
 
 .form-row button:hover {
-    background: #3a7bc8;
+    background: var(--accent-dark);
 }
 
 /* ── Tracker card ─────────────────────────────────────────── */
@@ -516,7 +531,7 @@ h1 {
 .back-link {
     display: inline-block;
     margin-bottom: 1rem;
-    color: #4a90d9;
+    color: var(--accent);
     text-decoration: none;
     font-size: 0.875rem;
 }
@@ -561,10 +576,10 @@ h1 {
 
 .gf-link {
     padding: 0.4rem 0.75rem;
-    border: 1px solid #4a90d9;
+    border: 1px solid var(--accent);
     border-radius: 4px;
     background: #fff;
-    color: #4a90d9;
+    color: var(--accent);
     font-size: 0.8125rem;
     text-decoration: none;
     cursor: pointer;
@@ -657,7 +672,7 @@ h1 {
 
 .search-now-btn {
     padding: 0.4rem 1rem;
-    background: #4a90d9;
+    background: var(--accent);
     color: #fff;
     border: none;
     border-radius: 4px;
@@ -667,7 +682,7 @@ h1 {
 }
 
 .search-now-btn:hover {
-    background: #3a7bc8;
+    background: var(--accent-dark);
 }
 
 .results-table {
@@ -760,7 +775,7 @@ h1 {
     width: 12px;
     height: 12px;
     border: 2px solid #ccc;
-    border-top-color: #4a90d9;
+    border-top-color: var(--accent);
     border-radius: 50%;
     animation: spinner 0.6s linear infinite;
     display: inline-block;
@@ -1031,7 +1046,7 @@ h1 {
 
 .airline-action-link {
     font-size: 0.75rem;
-    color: #4a90d9;
+    color: var(--accent);
     text-decoration: none;
     cursor: pointer;
 }
