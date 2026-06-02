@@ -163,6 +163,20 @@ def _compute_delta(current: float | None, reference: float | None) -> dict | Non
 
 
 _MIN_SPAN_FRAC = 0.06
+_MIN_GAP_FRAC = 0.40
+_RAIL_MARGIN = 0.14
+
+
+def _rail_positions(current_frac: float, low_frac: float) -> tuple[float, float]:
+    c, a = current_frac, low_frac
+    if a - c < _MIN_GAP_FRAC:
+        m = (c + a) / 2
+        c, a = m - _MIN_GAP_FRAC / 2, m + _MIN_GAP_FRAC / 2
+    if c < _RAIL_MARGIN:
+        c, a = _RAIL_MARGIN, max(a, _RAIL_MARGIN + _MIN_GAP_FRAC)
+    if a > 1 - _RAIL_MARGIN:
+        a, c = 1 - _RAIL_MARGIN, min(c, 1 - _RAIL_MARGIN - _MIN_GAP_FRAC)
+    return round(c, 4), round(a, 4)
 
 
 def _sparkline(prices: list[float], w: int = 132, h: int = 34, pad: int = 4) -> dict | None:
@@ -187,10 +201,14 @@ def _sparkline(prices: list[float], w: int = 132, h: int = 34, pad: int = 4) -> 
     area = f"{coords[0][0]},{h} {line} {coords[-1][0]},{h}"
     first, last = pts[0], pts[-1]
     trend = "down" if last < first else "up" if last > first else "flat"
-    label_h = 11
 
     low_idx = max(i for i, p in enumerate(pts) if p == lo)
     low_cx, low_cy = coords[low_idx]
+
+    last_y_frac = round(coords[-1][1] / h, 4)
+    low_y_frac = round(low_cy / h, 4)
+    at_all_time_low = last == lo
+    current_rail, alltime_rail = _rail_positions(last_y_frac, low_y_frac)
 
     return {
         "points": line,
@@ -201,10 +219,14 @@ def _sparkline(prices: list[float], w: int = 132, h: int = 34, pad: int = 4) -> 
         "last_x": coords[-1][0],
         "last_y": coords[-1][1],
         "last_price": last,
-        "label_y": h + label_h - 2,
+        "last_y_frac": last_y_frac,
+        "low_y_frac": low_y_frac,
+        "at_all_time_low": at_all_time_low,
+        "current_rail": current_rail,
+        "alltime_rail": alltime_rail,
         "trend": trend,
         "w": w,
-        "h": h + label_h,
+        "h": h,
     }
 
 
