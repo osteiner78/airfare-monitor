@@ -45,6 +45,15 @@
                 <span class="status-dot"></span>{{ "Active" if tracker.active else "Paused" }}
             </button>
         </div>
+        <div class="card-evo">
+            {% if tracker.best_price is not none %}
+            <div class="evo-strip">
+                {{ evo_cell('Start', tracker.delta_creation, tracker.currency) }}
+                {{ evo_cell('24h', tracker.delta_24h, tracker.currency) }}
+                {{ evo_cell('3h', tracker.delta_3h, tracker.currency) }}
+            </div>
+            {% endif %}
+        </div>
         <div class="card-panel">
             {% if tracker.spark %}
             <div class="price-chart-row">
@@ -107,17 +116,10 @@
                 {% endif %}
             </div>
             {% endif %}
-            {% if tracker.best_price is not none %}
-            <div class="evo-strip">
-                {{ evo_cell('Start', tracker.delta_creation, tracker.currency) }}
-                {{ evo_cell('24h', tracker.delta_24h, tracker.currency) }}
-                {{ evo_cell('3h', tracker.delta_3h, tracker.currency) }}
-            </div>
-            {% endif %}
-            <span class="meta-fetch">Last price fetch: <span class="last-checked" data-iso="{{ tracker.last_searched_at or '' }}">{%- if tracker.last_searched_at %}{{ tracker.last_searched_at }}{% else %}Never{% endif -%}</span></span>
             {% if tracker.recent_alerts and tracker.recent_alerts > 0 %}
             <span class="badge alert-count">{{ tracker.recent_alerts }} alert{{ 's' if tracker.recent_alerts > 1 else '' }}</span>
             {% endif %}
         </div>
     </div>
+    <span class="meta-fetch">Last checked: <span class="last-checked" data-iso="{{ tracker.last_searched_at or '' }}">{%- if tracker.last_searched_at %}{{ tracker.last_searched_at }}{% else %}Never{% endif -%}</span></span>
 </div>
