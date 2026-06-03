@@ -1,18 +1,4 @@
 {% from "partials/macros.html" import airline_logo %}
-{% macro evo_cell(label, d, currency) %}
-<div class="evo-cell">
-    <span class="evo-label">{{ label }}</span>
-    {% if d and d.type == 'down' %}
-        <span class="evo-val down">&darr;&thinsp;{{ currency | currency_symbol }}{{ "%.0f"|format(d.amount) }}</span>
-    {% elif d and d.type == 'up' %}
-        <span class="evo-val up">&uarr;&thinsp;{{ currency | currency_symbol }}{{ "%.0f"|format(d.amount) }}</span>
-    {% elif d and d.type == 'same' %}
-        <span class="evo-val same">&mdash;</span>
-    {% else %}
-        <span class="evo-val none">&mdash;</span>
-    {% endif %}
-</div>
-{% endmacro %}
 <div class="tracker-card" id="card-{{ tracker.id }}">
     <button class="card-delete"
             title="Delete tracker"
@@ -39,15 +25,6 @@
                 <span class="date">{{ tracker.depart_date | format_card_date }} &middot; one-way</span>
             </div>
         </div>
-        <div class="card-evo">
-            {% if tracker.best_price is not none %}
-            <div class="evo-strip">
-                {{ evo_cell('Start', tracker.delta_creation, tracker.currency) }}
-                {{ evo_cell('24h', tracker.delta_24h, tracker.currency) }}
-                {{ evo_cell('3h', tracker.delta_3h, tracker.currency) }}
-            </div>
-            {% endif %}
-        </div>
         <div class="card-panel">
             {% if tracker.spark %}
             <div class="price-chart-row">
@@ -67,6 +44,12 @@
                             <span class="rail-dot alltime"></span>
                             <span class="best-price">{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.best_price) }}</span>
                             {{ airline_logo(tracker.best_flight_number, tracker.best_flight_number) }}
+                            {% if tracker.primary_delta %}
+                            <span class="trend-chip {{ tracker.primary_delta.type }}">
+                                {%- if tracker.primary_delta.type == 'down' %}&darr;{% else %}&uarr;{% endif -%}
+                                {{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.primary_delta.amount) }}<span class="trend-chip-period">{{ tracker.primary_delta.period }}</span>
+                            </span>
+                            {% endif %}
                             <small class="filtered-tag" style="display:none">filtered</small>
                         </div>
                     </div>
@@ -77,6 +60,12 @@
                             <span class="rail-dot current"></span>
                             <span class="best-price">{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.best_price) }}</span>
                             {{ airline_logo(tracker.best_flight_number, tracker.best_flight_number) }}
+                            {% if tracker.primary_delta %}
+                            <span class="trend-chip {{ tracker.primary_delta.type }}">
+                                {%- if tracker.primary_delta.type == 'down' %}&darr;{% else %}&uarr;{% endif -%}
+                                {{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.primary_delta.amount) }}<span class="trend-chip-period">{{ tracker.primary_delta.period }}</span>
+                            </span>
+                            {% endif %}
                             <small class="filtered-tag" style="display:none">filtered</small>
                         </div>
                     </div>
@@ -85,7 +74,6 @@
                         <div class="rail-row">
                             <span class="rail-dot alltime"></span>
                             <span class="rail-price">{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.spark.low_price) }}</span>
-                            {{ airline_logo(tracker.historical_best_flight_number, tracker.historical_best_flight_number) }}
                         </div>
                     </div>
                     {% endif %}
@@ -101,6 +89,12 @@
                         {%- else -%}&mdash;{%- endif -%}
                     </span>
                     {{ airline_logo(tracker.best_flight_number, tracker.best_flight_number) }}
+                    {% if tracker.primary_delta %}
+                    <span class="trend-chip {{ tracker.primary_delta.type }}">
+                        {%- if tracker.primary_delta.type == 'down' %}&darr;{% else %}&uarr;{% endif -%}
+                        {{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.primary_delta.amount) }}<span class="trend-chip-period">{{ tracker.primary_delta.period }}</span>
+                    </span>
+                    {% endif %}
                     <small class="filtered-tag" style="display:none">filtered</small>
                 </div>
                 {% if tracker.historical_best_price is not none %}
@@ -108,7 +102,6 @@
                     <span class="rail-cap">All-time best</span>
                     <div class="rail-row">
                         <span class="rail-price">{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.historical_best_price) }}</span>
-                        {{ airline_logo(tracker.historical_best_flight_number, tracker.historical_best_flight_number) }}
                     </div>
                 </div>
                 {% endif %}
