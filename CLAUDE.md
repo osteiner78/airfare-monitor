@@ -67,7 +67,8 @@ airfare-monitor/
 fastapi, uvicorn, aiosqlite, apscheduler, flights, jinja2, python-multipart
 ```
 
-Install: `pip install -r requirements.txt`
+Install (runtime): `pip install -r requirements.txt`
+Install (dev/tests): `pip install -r requirements-dev.txt`
 
 ## Running
 

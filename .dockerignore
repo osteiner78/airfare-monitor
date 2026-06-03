@@ -1,0 +1,15 @@
+data/
+tests/
+__pycache__/
+*.py[cod]
+.git/
+.agent/
+*.db
+*.db-journal
+*.db-wal
+.env
+.DS_Store
+*.swp
+*.swo
+.history/
+**/__pycache__/
