@@ -205,7 +205,9 @@ def _sparkline(prices: list[float], w: int = 132, h: int = 34, pad: int = 4) -> 
     low_idx = max(i for i, p in enumerate(pts) if p == lo)
     low_cx, low_cy = coords[low_idx]
 
+    last_x_frac = round(coords[-1][0] / w, 4)
     last_y_frac = round(coords[-1][1] / h, 4)
+    low_x_frac = round(low_cx / w, 4)
     low_y_frac = round(low_cy / h, 4)
     at_all_time_low = last == lo
     current_rail, alltime_rail = _rail_positions(last_y_frac, low_y_frac)
@@ -219,7 +221,9 @@ def _sparkline(prices: list[float], w: int = 132, h: int = 34, pad: int = 4) -> 
         "last_x": coords[-1][0],
         "last_y": coords[-1][1],
         "last_price": last,
+        "last_x_frac": last_x_frac,
         "last_y_frac": last_y_frac,
+        "low_x_frac": low_x_frac,
         "low_y_frac": low_y_frac,
         "at_all_time_low": at_all_time_low,
         "current_rail": current_rail,

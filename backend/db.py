@@ -77,6 +77,8 @@ CREATE TABLE IF NOT EXISTS system_logs (
 
 CREATE INDEX IF NOT EXISTS idx_prices_tracker_key ON flight_prices(tracker_id, flight_key);
 CREATE INDEX IF NOT EXISTS idx_snapshots_tracker ON snapshots(tracker_id, searched_at);
+CREATE INDEX IF NOT EXISTS idx_prices_snapshot_price ON flight_prices(snapshot_id, price);
+CREATE INDEX IF NOT EXISTS idx_prices_tracker_price ON flight_prices(tracker_id, price);
 """
 
 

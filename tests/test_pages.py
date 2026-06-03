@@ -489,3 +489,122 @@ async def test_card_without_history_uses_fallback(client):
     assert "panel-fallback" in text
     assert "price-rail" not in text
     assert "best-price" in text
+
+
+# === Plan 014: Geist font, single trend chip, de-duplicated logo ===
+# Fail-first — pins the `_primary_delta` selector, the trend chip, the removed
+# evo-strip, the single airline logo, and the Geist font swap.
+
+# --- Phase 1: _primary_delta selector (pure) ---
+
+def test_primary_delta_prefers_3h():
+    from backend.pages import _primary_delta
+    pd = _primary_delta({
+        "delta_3h": {"type": "down", "amount": 3.0},
+        "delta_24h": {"type": "up", "amount": 5.0},
+        "delta_creation": {"type": "up", "amount": 2.0},
+    })
+    assert pd["period"] == "3h"
+    assert pd["type"] == "down"
+
+
+def test_primary_delta_falls_back_to_24h():
+    from backend.pages import _primary_delta
+    pd = _primary_delta({
+        "delta_3h": None,
+        "delta_24h": {"type": "up", "amount": 5.0},
+        "delta_creation": {"type": "down", "amount": 2.0},
+    })
+    assert pd["period"] == "24h"
+
+
+def test_primary_delta_falls_back_to_start():
+    from backend.pages import _primary_delta
+    pd = _primary_delta({
+        "delta_3h": None,
+        "delta_24h": None,
+        "delta_creation": {"type": "down", "amount": 2.0},
+    })
+    assert pd["period"] == "start"
+
+
+def test_primary_delta_skips_same():
+    from backend.pages import _primary_delta
+    pd = _primary_delta({
+        "delta_3h": {"type": "same"},
+        "delta_24h": {"type": "down", "amount": 4.0},
+        "delta_creation": {"type": "up", "amount": 1.0},
+    })
+    assert pd["period"] == "24h"
+    assert pd["type"] == "down"
+
+
+def test_primary_delta_none_when_no_movement():
+    from backend.pages import _primary_delta
+    pd = _primary_delta({
+        "delta_3h": {"type": "same"},
+        "delta_24h": None,
+        "delta_creation": {"type": "same"},
+    })
+    assert pd is None
+
+
+def test_primary_delta_carries_type_and_amount():
+    from backend.pages import _primary_delta
+    pd = _primary_delta({
+        "delta_3h": None,
+        "delta_24h": None,
+        "delta_creation": {"type": "up", "amount": 7.5},
+    })
+    assert pd["type"] == "up"
+    assert pd["amount"] == 7.5
+    assert pd["period"] == "start"
+
+
+# --- Phase 2: card markup / CSS (chip, evo-strip removal, logo, font) ---
+
+@pytest.mark.asyncio
+async def test_card_has_no_evo_strip(client):
+    await _seed_history(client, [80, 100])
+    text = (await client.get("/")).text
+    assert "evo-strip" not in text
+
+
+@pytest.mark.asyncio
+async def test_card_shows_trend_chip_when_moved(client):
+    # current (110) differs from creation (100) → a movement chip should render
+    await _seed_history(client, [100, 110])
+    text = (await client.get("/")).text
+    assert "trend-chip" in text
+
+
+@pytest.mark.asyncio
+async def test_card_no_trend_chip_when_flat(client):
+    # price never moved → no chip
+    await _seed_history(client, [100, 100])
+    text = (await client.get("/")).text
+    assert "trend-chip" not in text
+
+
+@pytest.mark.asyncio
+async def test_card_alltime_has_no_logo(client):
+    # two-stat card (current 100 > all-time low 80), single airline (VY):
+    # the logo must render exactly once (on CURRENT only).
+    await _seed_history(client, [80, 100])
+    text = (await client.get("/")).text
+    assert text.count("/airline-logo/VY") == 1
+
+
+@pytest.mark.asyncio
+async def test_card_uses_geist_font(client):
+    text = (await client.get("/")).text
+    assert "Geist" in text
+
+
+@pytest.mark.asyncio
+async def test_spark_svg_uses_preserve_aspect_ratio_none(client):
+    # The sparkline SVG must carry preserveAspectRatio="none" so the line/area
+    # fill the container. Dots are CSS elements and are not affected by this.
+    await _seed_history(client, [80, 100])
+    text = (await client.get("/")).text
+    assert 'preserveAspectRatio="none"' in text

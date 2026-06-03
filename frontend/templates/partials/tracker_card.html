@@ -28,14 +28,16 @@
         <div class="card-panel">
             {% if tracker.spark %}
             <div class="price-chart-row">
-                <svg class="spark spark-{{ tracker.spark.trend }}{% if tracker.spark.at_all_time_low %} spark-at-low{% endif %}"
-                     viewBox="0 0 {{ tracker.spark.w }} {{ tracker.spark.h }}"
-                     preserveAspectRatio="none" aria-hidden="true">
-                    <polygon class="spark-area" points="{{ tracker.spark.area }}"/>
-                    <polyline class="spark-line" points="{{ tracker.spark.points }}"/>
-                    <circle class="spark-low-dot" cx="{{ tracker.spark.low_x }}" cy="{{ tracker.spark.low_y }}" r="2.2"/>
-                    <circle class="spark-dot" cx="{{ tracker.spark.last_x }}" cy="{{ tracker.spark.last_y }}" r="2.2"/>
-                </svg>
+                <div class="spark-wrapper{% if tracker.spark.at_all_time_low %} spark-at-low{% endif %}">
+                    <svg class="spark spark-{{ tracker.spark.trend }}"
+                         viewBox="0 0 {{ tracker.spark.w }} {{ tracker.spark.h }}"
+                         preserveAspectRatio="none" aria-hidden="true">
+                        <polygon class="spark-area" points="{{ tracker.spark.area }}"/>
+                        <polyline class="spark-line" points="{{ tracker.spark.points }}"/>
+                    </svg>
+                    <span class="spark-dot-el low" style="left:{{ '%.1f'|format(tracker.spark.low_x_frac * 100) }}%;top:{{ '%.1f'|format(tracker.spark.low_y_frac * 100) }}%"></span>
+                    <span class="spark-dot-el current" style="left:{{ '%.1f'|format(tracker.spark.last_x_frac * 100) }}%;top:{{ '%.1f'|format(tracker.spark.last_y_frac * 100) }}%"></span>
+                </div>
                 <div class="price-rail{% if tracker.spark.at_all_time_low %} price-rail--combined{% endif %}">
                     {% if tracker.spark.at_all_time_low %}
                     <div class="rail-stat rail-combined">
@@ -44,14 +46,14 @@
                             <span class="rail-dot alltime"></span>
                             <span class="best-price">{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.best_price) }}</span>
                             {{ airline_logo(tracker.best_flight_number, tracker.best_flight_number) }}
-                            {% if tracker.primary_delta %}
-                            <span class="trend-chip {{ tracker.primary_delta.type }}">
-                                {%- if tracker.primary_delta.type == 'down' %}&darr;{% else %}&uarr;{% endif -%}
-                                {{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.primary_delta.amount) }}<span class="trend-chip-period">{{ tracker.primary_delta.period }}</span>
-                            </span>
-                            {% endif %}
                             <small class="filtered-tag" style="display:none">filtered</small>
                         </div>
+                        {% if tracker.primary_delta %}
+                        <span class="trend-chip {{ tracker.primary_delta.type }}">
+                            {%- if tracker.primary_delta.type == 'down' %}&darr;{% else %}&uarr;{% endif -%}
+                            {{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.primary_delta.amount) }}<span class="trend-chip-period">{{ tracker.primary_delta.period }}</span>
+                        </span>
+                        {% endif %}
                     </div>
                     {% else %}
                     <div class="rail-stat rail-current">
@@ -60,14 +62,14 @@
                             <span class="rail-dot current"></span>
                             <span class="best-price">{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.best_price) }}</span>
                             {{ airline_logo(tracker.best_flight_number, tracker.best_flight_number) }}
-                            {% if tracker.primary_delta %}
-                            <span class="trend-chip {{ tracker.primary_delta.type }}">
-                                {%- if tracker.primary_delta.type == 'down' %}&darr;{% else %}&uarr;{% endif -%}
-                                {{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.primary_delta.amount) }}<span class="trend-chip-period">{{ tracker.primary_delta.period }}</span>
-                            </span>
-                            {% endif %}
                             <small class="filtered-tag" style="display:none">filtered</small>
                         </div>
+                        {% if tracker.primary_delta %}
+                        <span class="trend-chip {{ tracker.primary_delta.type }}">
+                            {%- if tracker.primary_delta.type == 'down' %}&darr;{% else %}&uarr;{% endif -%}
+                            {{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.primary_delta.amount) }}<span class="trend-chip-period">{{ tracker.primary_delta.period }}</span>
+                        </span>
+                        {% endif %}
                     </div>
                     <div class="rail-stat rail-alltime">
                         <span class="rail-cap">All-time best</span>
@@ -89,14 +91,14 @@
                         {%- else -%}&mdash;{%- endif -%}
                     </span>
                     {{ airline_logo(tracker.best_flight_number, tracker.best_flight_number) }}
-                    {% if tracker.primary_delta %}
-                    <span class="trend-chip {{ tracker.primary_delta.type }}">
-                        {%- if tracker.primary_delta.type == 'down' %}&darr;{% else %}&uarr;{% endif -%}
-                        {{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.primary_delta.amount) }}<span class="trend-chip-period">{{ tracker.primary_delta.period }}</span>
-                    </span>
-                    {% endif %}
                     <small class="filtered-tag" style="display:none">filtered</small>
                 </div>
+                {% if tracker.primary_delta %}
+                <span class="trend-chip {{ tracker.primary_delta.type }}">
+                    {%- if tracker.primary_delta.type == 'down' %}&darr;{% else %}&uarr;{% endif -%}
+                    {{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.primary_delta.amount) }}<span class="trend-chip-period">{{ tracker.primary_delta.period }}</span>
+                </span>
+                {% endif %}
                 {% if tracker.historical_best_price is not none %}
                 <div class="fallback-alltime">
                     <span class="rail-cap">All-time best</span>
