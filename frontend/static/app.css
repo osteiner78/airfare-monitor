@@ -163,7 +163,7 @@ h1 {
 
 .card-grid {
     display: grid;
-    grid-template-columns: minmax(150px, 0.8fr) 1.2fr;
+    grid-template-columns: minmax(150px, 0.75fr) 1.4fr;
 }
 
 /* Left: route, date, status */
@@ -189,6 +189,7 @@ h1 {
     font-size: 1.3rem;
     font-weight: 700;
     letter-spacing: -0.01em;
+    font-family: var(--font-mono);
     color: var(--ink);
     transition: color 0.15s;
 }
@@ -265,14 +266,16 @@ h1 {
 .price-chart-row {
     display: flex;
     position: relative;
-    height: 108px;
+    min-height: 64px;
+    align-items: flex-start;
     gap: 0.75rem;
 }
 
 .spark-wrapper {
-    flex: 1;
+    flex: 0 1 250px;
+    max-width: 270px;
     position: relative;
-    height: 100%;
+    height: 64px;
     min-width: 0;
 }
 
@@ -299,9 +302,11 @@ h1 {
 .price-rail {
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
-    width: 116px;
-    flex-shrink: 0;
+    justify-content: flex-start;
+    flex: 1;
+    width: auto;
+    min-width: 190px;
+    gap: 0.65rem;
     padding: 8px 0;
 }
 
@@ -346,7 +351,7 @@ h1 {
 
 .rail-current .best-price {
     font-family: var(--font-mono);
-    font-size: 1.15rem;
+    font-size: 1.9rem;
     font-weight: 600;
     line-height: 1;
     letter-spacing: -0.02em;
@@ -371,7 +376,7 @@ h1 {
 
 .rail-combined .best-price {
     font-family: var(--font-mono);
-    font-size: 1.15rem;
+    font-size: 1.9rem;
     font-weight: 600;
     line-height: 1;
     letter-spacing: -0.02em;
