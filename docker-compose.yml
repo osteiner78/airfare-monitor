@@ -5,10 +5,11 @@ services:
     ports:
       - "8100:8100"
     volumes:
-      - ./data:/app/data
+      - .:/app
     environment:
       AIRFARE_DB_PATH: /app/data/airfare.db
     restart: unless-stopped
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8100 --reload --reload-dir backend
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8100/').status==200 else 1)"]
       interval: 30s
