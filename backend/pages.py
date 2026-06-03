@@ -230,6 +230,18 @@ def _sparkline(prices: list[float], w: int = 132, h: int = 34, pad: int = 4) -> 
     }
 
 
+def _primary_delta(summary: dict) -> dict | None:
+    candidates = [
+        ("3h", summary.get("delta_3h")),
+        ("24h", summary.get("delta_24h")),
+        ("start", summary.get("delta_creation")),
+    ]
+    for period, d in candidates:
+        if d is not None and d.get("type") in ("up", "down"):
+            return {"period": period, "type": d["type"], "amount": d.get("amount")}
+    return None
+
+
 def _enrich_summaries(summaries: list, series: dict[int, list[float]] | None = None) -> list:
     series = series or {}
     for s in summaries:
@@ -238,6 +250,7 @@ def _enrich_summaries(summaries: list, series: dict[int, list[float]] | None = N
         s["delta_creation"] = _compute_delta(best, s.get("best_price_at_creation"))
         s["delta_24h"] = _compute_delta(best, s.get("best_price_24h_ago"))
         s["delta_3h"] = _compute_delta(best, s.get("best_price_3h_ago"))
+        s["primary_delta"] = _primary_delta(s)
         s["spark"] = _sparkline(series.get(s["id"], []))
     return summaries
 
