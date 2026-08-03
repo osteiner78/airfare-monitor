@@ -6,6 +6,10 @@ from backend.sources.base import FlightResult
 
 
 class GoogleFlightsSource:
+    def __init__(self) -> None:
+        self.last_error: str | None = None
+        self.last_error_level: str = "ERROR"
+
     async def search(
         self,
         origin: str,
@@ -15,6 +19,8 @@ class GoogleFlightsSource:
         currency: str,
         top_n: int,
     ) -> list[FlightResult]:
+        self.last_error = None
+
         # "flights" set to None in sys.modules is the test sentinel for fli unavailable
         try:
             if "flights" in sys.modules and sys.modules["flights"] is None:
@@ -25,7 +31,9 @@ class GoogleFlightsSource:
 
         try:
             return await self._fetch(origin, dest, depart_date, return_date, currency, top_n)
-        except Exception:
+        except Exception as e:
+            self.last_error = f"{type(e).__name__}: {e}"
+            self.last_error_level = "ERROR"
             return []
 
     async def _fetch(
@@ -74,6 +82,11 @@ class GoogleFlightsSource:
         client = SearchFlights()
         raw_results = await asyncio.to_thread(client.search, filters, top_n, currency)
         if not raw_results:
+            self.last_error = (
+                "fli returned no results (route may genuinely have none, or Google's "
+                "API may be rejecting the request upstream)"
+            )
+            self.last_error_level = "WARNING"
             return []
 
         return [self._map_result(r, origin, dest, depart_date) for r in raw_results if r.price is not None]

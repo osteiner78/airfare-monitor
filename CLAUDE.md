@@ -137,7 +137,7 @@ Ask before:
 - Deleting trackers or data from the database
 - Dropping or altering tables (schema migration)
 - Installing packages outside the project (system-level)
-- Making changes outside `~/Documents/code/airfare-tracker/`
+- Making changes outside `/srv/airfare-monitor/`
 - Committing or pushing to git
 
 ## .agent directory

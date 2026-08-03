@@ -44,7 +44,7 @@
                         <span class="rail-cap">All-time best &middot; now</span>
                         <div class="rail-row">
                             <span class="rail-dot alltime"></span>
-                            <span class="best-price">{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.best_price) }}</span>
+                            <span class="best-price">{% if tracker.best_price is not none %}{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.best_price) }}{% else %}&ndash;{% endif %}</span>
                             {{ airline_logo(tracker.best_flight_number, tracker.best_flight_number) }}
                             <small class="filtered-tag" style="display:none">filtered</small>
                         </div>
@@ -60,7 +60,7 @@
                         <span class="rail-cap">Current best</span>
                         <div class="rail-row">
                             <span class="rail-dot current"></span>
-                            <span class="best-price">{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.best_price) }}</span>
+                            <span class="best-price">{% if tracker.best_price is not none %}{{ tracker.currency | currency_symbol }}{{ "%.0f"|format(tracker.best_price) }}{% else %}&ndash;{% endif %}</span>
                             {{ airline_logo(tracker.best_flight_number, tracker.best_flight_number) }}
                             <small class="filtered-tag" style="display:none">filtered</small>
                         </div>

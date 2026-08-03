@@ -29,6 +29,15 @@ async def search_and_store(tracker_id: int) -> None:
                 tracker["top_n"],
             )
             results.extend(found)
+            last_error = getattr(source, "last_error", None)
+            if last_error:
+                level = getattr(source, "last_error_level", "ERROR")
+                await insert_log(
+                    level,
+                    "search_error",
+                    tracker_id=tracker_id,
+                    message=f"{type(source).__name__}: {last_error}",
+                )
         except Exception as e:
             await insert_log("ERROR", "search_error", tracker_id=tracker_id, message=str(e))
 
