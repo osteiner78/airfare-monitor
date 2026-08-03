@@ -340,7 +340,7 @@ async def get_tracker_summaries() -> list:
                                      ORDER BY searched_at DESC LIMIT 1)
                       ) AS best_price_3h_ago
                FROM trackers t
-               ORDER BY t.id""",
+               ORDER BY t.depart_date""",
         ) as cur:
             rows = await cur.fetchall()
     return [_row_to_dict(r) for r in rows]

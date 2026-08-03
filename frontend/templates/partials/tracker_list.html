@@ -2,6 +2,16 @@
     {% for tracker in trackers %}
         {% include "partials/tracker_card.html" %}
     {% endfor %}
-{% else %}
+{% elif not past_trackers %}
     <p class="empty-state">No trackers yet</p>
+{% endif %}
+{% if past_trackers %}
+<details class="past-flights">
+    <summary class="past-flights-summary">Past flights ({{ past_trackers | length }})</summary>
+    <div class="past-flights-list">
+        {% for tracker in past_trackers %}
+            {% include "partials/tracker_card.html" %}
+        {% endfor %}
+    </div>
+</details>
 {% endif %}

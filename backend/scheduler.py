@@ -6,12 +6,19 @@ scheduler: AsyncIOScheduler | None = None
 
 
 async def search_and_store(tracker_id: int) -> None:
-    from backend.db import create_snapshot, get_tracker, insert_flight_prices, insert_log
+    from backend.db import create_snapshot, get_tracker, insert_flight_prices, insert_log, update_tracker
     from backend.fingerprint import make_flight_key
     from backend.sources import get_sources
 
     tracker = await get_tracker(tracker_id)
     if not tracker:
+        return
+
+    if tracker["depart_date"] < datetime.now().date().isoformat():
+        if tracker["active"]:
+            await update_tracker(tracker_id, active=False)
+            remove_tracker_job(tracker_id)
+            await insert_log("INFO", "tracker_paused", tracker_id=tracker_id, message="depart date passed")
         return
 
     await insert_log("INFO", "search_start", tracker_id=tracker_id)

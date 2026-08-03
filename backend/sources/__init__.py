@@ -1,6 +1,6 @@
 from backend.sources.base import SearchSource
-from backend.sources.google_flights import GoogleFlightsSource
+from backend.sources.fallback import FallbackSource
 
 
 def get_sources() -> list[SearchSource]:
-    return [GoogleFlightsSource()]
+    return [FallbackSource()]

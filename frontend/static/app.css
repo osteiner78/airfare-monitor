@@ -91,6 +91,40 @@ h1 {
     font-style: italic;
 }
 
+.past-flights {
+    margin-top: 1.5rem;
+}
+
+.past-flights-summary {
+    cursor: pointer;
+    list-style: none;
+    color: var(--ink-soft);
+    font-size: 0.9rem;
+    font-weight: 500;
+    padding: 0.6rem 0;
+    border-top: 1px solid var(--line);
+}
+
+.past-flights-summary::-webkit-details-marker {
+    display: none;
+}
+
+.past-flights-summary::before {
+    content: "\25B8";
+    display: inline-block;
+    margin-right: 0.4rem;
+    transition: transform 0.15s;
+}
+
+.past-flights[open] .past-flights-summary::before {
+    transform: rotate(90deg);
+}
+
+.past-flights-list {
+    margin-top: 0.75rem;
+    opacity: 0.75;
+}
+
 .add-form {
     background: #fff;
     border: 1px solid #ddd;

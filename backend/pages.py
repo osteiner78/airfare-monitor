@@ -259,11 +259,19 @@ def _enrich_summaries(summaries: list, series: dict[int, list[float]] | None = N
     return summaries
 
 
+def _split_by_departure(summaries: list) -> tuple[list, list]:
+    today = datetime.now().date().isoformat()
+    upcoming = [s for s in summaries if s["depart_date"] >= today]
+    past = [s for s in summaries if s["depart_date"] < today]
+    return upcoming, past
+
+
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     summaries = await get_tracker_summaries()
     summaries = _enrich_summaries(summaries, await get_best_price_series())
-    return _render("dashboard.html", {"request": request, "trackers": summaries})
+    upcoming, past = _split_by_departure(summaries)
+    return _render("dashboard.html", {"request": request, "trackers": upcoming, "past_trackers": past})
 
 
 @router.post("/", response_class=HTMLResponse)
@@ -283,7 +291,8 @@ async def add_tracker(request: Request):
     backend.scheduler.add_tracker_job(tracker["id"], tracker["interval_minutes"], run_immediately=False)
 
     summaries = _enrich_summaries(await get_tracker_summaries(), await get_best_price_series())
-    return _render("partials/tracker_list.html", {"request": request, "trackers": summaries})
+    upcoming, past = _split_by_departure(summaries)
+    return _render("partials/tracker_list.html", {"request": request, "trackers": upcoming, "past_trackers": past})
 
 
 @router.patch("/trackers/{tracker_id}/toggle", response_class=HTMLResponse)
@@ -499,7 +508,8 @@ async def delete_tracker_card(request: Request, tracker_id: int):
                          message=f"{tracker['origin']} -> {tracker['destination']}")
 
     summaries = _enrich_summaries(await get_tracker_summaries(), await get_best_price_series())
-    return _render("partials/tracker_list.html", {"request": request, "trackers": summaries})
+    upcoming, past = _split_by_departure(summaries)
+    return _render("partials/tracker_list.html", {"request": request, "trackers": upcoming, "past_trackers": past})
 
 
 @router.patch("/trackers/{tracker_id}/toggle-detail", response_class=HTMLResponse)
@@ -541,7 +551,8 @@ async def refresh_all(request: Request):
             await backend.scheduler.search_and_store(tracker["id"])
 
     summaries = _enrich_summaries(await get_tracker_summaries(), await get_best_price_series())
-    return _render("dashboard.html", {"request": request, "trackers": summaries})
+    upcoming, past = _split_by_departure(summaries)
+    return _render("dashboard.html", {"request": request, "trackers": upcoming, "past_trackers": past})
 
 
 @router.get("/monitor", response_class=HTMLResponse)
