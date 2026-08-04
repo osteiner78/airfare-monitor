@@ -248,7 +248,7 @@ async def get_price_history(tracker_id: int, flight_keys: list[str] | None = Non
     db_path = get_db_path()
     query = """SELECT fp.flight_key, fp.price, fp.currency, fp.airline,
                       fp.flight_number, fp.departure_time, fp.arrival_time,
-                      fp.duration_min, fp.stops, s.searched_at
+                      fp.duration_min, fp.stops, fp.snapshot_id, s.searched_at
                FROM flight_prices fp
                JOIN snapshots s ON fp.snapshot_id = s.id
                WHERE fp.tracker_id = ?"""

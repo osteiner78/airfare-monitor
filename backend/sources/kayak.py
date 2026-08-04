@@ -15,7 +15,11 @@ _LLM_MODEL = "deepseek-chat"
 
 _RENDER_TIMEOUT_S = 45.0
 _LLM_TIMEOUT_S = 30.0
-_OVERALL_TIMEOUT_S = 90.0
+# Worst case: page.goto's own timeout (_RENDER_TIMEOUT_S) plus
+# _wait_for_results_stable's separate cap (also _RENDER_TIMEOUT_S) can both
+# elapse before the LLM call even starts, so the overall budget must cover
+# both render timeouts in full plus the LLM call, with slack.
+_OVERALL_TIMEOUT_S = 2 * _RENDER_TIMEOUT_S + _LLM_TIMEOUT_S + 30.0
 
 _BLOCKED_MARKERS = (
     "verify you are human",
@@ -89,6 +93,20 @@ class KayakSource:
             return []
 
         validated = self._validate(rows, body_text)
+        dropped = len(rows) - len(validated)
+
+        if not validated:
+            self.last_error = (
+                f"Kayak validation dropped all {dropped} extracted row(s) "
+                "(grounding/price checks failed)"
+            )
+            self.last_error_level = "WARNING"
+            return []
+
+        if dropped:
+            self.last_error = f"Kayak validation dropped {dropped} of {len(rows)} extracted row(s)"
+            self.last_error_level = "WARNING"
+
         return [self._map_result(row, currency, url) for row in validated]
 
     @staticmethod
@@ -120,7 +138,7 @@ class KayakSource:
 
     @staticmethod
     async def _wait_for_results_stable(page, cap_seconds: float = _RENDER_TIMEOUT_S) -> None:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         deadline = loop.time() + cap_seconds
         previous_count = -1
         stable_polls = 0
@@ -205,7 +223,7 @@ class KayakSource:
             price=float(row["price"]),
             currency=currency,
             duration_min=row.get("duration_min"),
-            stops=row.get("stops"),
+            stops=row.get("stops") or 0,
             airline=row.get("airline", ""),
             flight_number=row.get("flight_number", ""),
             departure_time=row.get("departure_time", ""),

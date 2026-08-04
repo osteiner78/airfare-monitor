@@ -403,13 +403,25 @@ async def _build_detail_context(tracker_id: int) -> dict:
     history = await get_price_history(tracker_id, flight_keys=list(history_keys)) if history_keys else []
 
     # Build history series and keep the most-recent row per key for label fallback.
+    # history is ORDER BY searched_at ASC. Two sources quoting the same flight_key
+    # in one snapshot produce two rows sharing that snapshot's flight_key -- merge
+    # those into one point (cheapest price wins), keyed by snapshot_id rather than
+    # the formatted timestamp string: two DIFFERENT snapshots can legitimately
+    # share the same second-resolution searched_at (e.g. two inserts in quick
+    # succession), and those must stay as separate chart points.
     history_by_key: dict[str, list] = {}
     history_latest: dict[str, dict] = {}
+    _last_snapshot_for_key: dict[str, int] = {}
     for row in history:
         key = row["flight_key"]
-        if key not in history_by_key:
-            history_by_key[key] = []
-        history_by_key[key].append({"x": row["searched_at"].replace(" ", "T"), "y": row["price"]})
+        ts = row["searched_at"].replace(" ", "T")
+        points = history_by_key.setdefault(key, [])
+        if points and _last_snapshot_for_key.get(key) == row["snapshot_id"]:
+            if row["price"] < points[-1]["y"]:
+                points[-1]["y"] = row["price"]
+        else:
+            points.append({"x": ts, "y": row["price"]})
+            _last_snapshot_for_key[key] = row["snapshot_id"]
         history_latest[key] = row  # history is ASC so last write = most recent
 
     def _label_for_key(key: str) -> str:
