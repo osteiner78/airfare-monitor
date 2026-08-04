@@ -357,3 +357,21 @@ async def test_kayak_exception_never_propagates_out_of_search_and_store(db_path)
     snapshot = await get_latest_snapshot(tracker_id)
     assert snapshot is not None
     assert snapshot["results_count"] == 1
+
+
+# --- the detail-page kayak toggle (3.8), added during implementation ---
+
+async def test_toggle_kayak_endpoint_flips_kayak_enabled(client):
+    from backend.db import get_tracker
+
+    await client.post("/api/trackers", json=TRACKER)
+    response = await client.patch("/trackers/1/toggle-kayak")
+    assert response.status_code == 200
+
+    tracker = await get_tracker(1)
+    assert tracker["kayak_enabled"]
+
+
+async def test_toggle_kayak_endpoint_returns_404_for_missing_tracker(client):
+    response = await client.patch("/trackers/999/toggle-kayak")
+    assert response.status_code == 404

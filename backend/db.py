@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS trackers (
     interval_minutes INTEGER NOT NULL DEFAULT 180,
     top_n INTEGER NOT NULL DEFAULT 5,
     active INTEGER NOT NULL DEFAULT 1,
+    kayak_enabled INTEGER NOT NULL DEFAULT 0,
+    kayak_next_due_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

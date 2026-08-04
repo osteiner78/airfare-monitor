@@ -37,6 +37,7 @@ class TrackerCreate(BaseModel):
 class TrackerUpdate(BaseModel):
     active: bool | None = None
     interval_minutes: int | None = None
+    kayak_enabled: bool | None = None
 
 
 class TrackerResponse(BaseModel):
@@ -49,6 +50,7 @@ class TrackerResponse(BaseModel):
     interval_minutes: int
     top_n: int
     active: bool
+    kayak_enabled: bool
     created_at: str
 
 

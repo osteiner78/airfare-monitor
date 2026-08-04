@@ -1,14 +1,37 @@
-from datetime import datetime
+import asyncio
+import random
+from datetime import datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 scheduler: AsyncIOScheduler | None = None
 
+# Matches the format sqlite's datetime('now') writes elsewhere in this schema.
+_KAYAK_TS_FORMAT = "%Y-%m-%d %H:%M:%S"
 
-async def search_and_store(tracker_id: int) -> None:
+
+def _kayak_due(next_due_at: str | None, now: datetime) -> bool:
+    if next_due_at is None:
+        return True
+    return now >= datetime.strptime(next_due_at, _KAYAK_TS_FORMAT)
+
+
+def _jittered_kayak_interval_minutes(base_minutes: float) -> float:
+    """Randomize base_minutes within +/-20%, floored at 1.
+
+    Perfectly regular polling is exactly the pattern PerimeterX (Kayak's bot
+    detection) is built to catch, so Kayak's cadence must never be a fixed
+    interval.
+    """
+    jittered = base_minutes * random.uniform(0.8, 1.2)
+    return max(1.0, jittered)
+
+
+async def search_and_store(tracker_id: int, delay: bool = True) -> None:
     from backend.db import create_snapshot, get_tracker, insert_flight_prices, insert_log, update_tracker
     from backend.fingerprint import make_flight_key
     from backend.sources import get_sources
+    from backend.sources.kayak import KayakSource
 
     tracker = await get_tracker(tracker_id)
     if not tracker:
@@ -47,6 +70,37 @@ async def search_and_store(tracker_id: int) -> None:
                 )
         except Exception as e:
             await insert_log("ERROR", "search_error", tracker_id=tracker_id, message=str(e))
+
+    if tracker["kayak_enabled"] and _kayak_due(tracker["kayak_next_due_at"], datetime.now()):
+        try:
+            if delay:
+                await asyncio.sleep(random.uniform(0, 15 * 60))
+            kayak_source = KayakSource()
+            kayak_results = await kayak_source.search(
+                tracker["origin"],
+                tracker["destination"],
+                tracker["depart_date"],
+                tracker.get("return_date"),
+                tracker["currency"],
+                tracker["top_n"],
+            )
+            results.extend(kayak_results)
+            last_error = getattr(kayak_source, "last_error", None)
+            if last_error:
+                level = getattr(kayak_source, "last_error_level", "ERROR")
+                await insert_log(
+                    level,
+                    "kayak_search_error",
+                    tracker_id=tracker_id,
+                    message=f"KayakSource: {last_error}",
+                )
+        except Exception as e:
+            await insert_log("ERROR", "kayak_search_error", tracker_id=tracker_id, message=str(e))
+        finally:
+            next_due_at = datetime.now() + timedelta(
+                minutes=_jittered_kayak_interval_minutes(tracker["interval_minutes"])
+            )
+            await update_tracker(tracker_id, kayak_next_due_at=next_due_at.strftime(_KAYAK_TS_FORMAT))
 
     snapshot = await create_snapshot(tracker_id, results_count=len(results))
 

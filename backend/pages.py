@@ -571,6 +571,25 @@ async def toggle_tracker_detail(request: Request, tracker_id: int):
     return _render("partials/detail_page.html", ctx)
 
 
+@router.patch("/trackers/{tracker_id}/toggle-kayak", response_class=HTMLResponse)
+async def toggle_tracker_kayak(request: Request, tracker_id: int):
+    tracker = await get_tracker(tracker_id)
+    if tracker is None:
+        raise HTTPException(status_code=404, detail="Tracker not found")
+
+    new_kayak_enabled = not tracker["kayak_enabled"]
+    await update_tracker(tracker_id, kayak_enabled=new_kayak_enabled)
+
+    if new_kayak_enabled:
+        await insert_log("INFO", "kayak_enabled", tracker_id=tracker_id)
+    else:
+        await insert_log("INFO", "kayak_disabled", tracker_id=tracker_id)
+
+    ctx = await _build_detail_context(tracker_id)
+    ctx["request"] = request
+    return _render("partials/detail_page.html", ctx)
+
+
 @router.delete("/trackers/{tracker_id}/detail", response_class=HTMLResponse)
 async def delete_tracker_detail(request: Request, tracker_id: int):
     backend.scheduler.remove_tracker_job(tracker_id)
