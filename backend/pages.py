@@ -335,8 +335,13 @@ async def _build_detail_context(tracker_id: int) -> dict:
 
     if previous:
         prev = await get_flight_prices_for_snapshot(previous["id"])
-        previous_prices = {p["flight_key"]: p["price"] for p in prev}
-        prev_flights = {p["flight_key"]: p for p in prev}
+        # prev is ORDER BY price ASC; setdefault keeps the first (cheapest)
+        # row per flight_key when the same flight was quoted by two sources.
+        previous_prices = {}
+        prev_flights = {}
+        for p in prev:
+            previous_prices.setdefault(p["flight_key"], p["price"])
+            prev_flights.setdefault(p["flight_key"], p)
     else:
         prev_flights = {}
 
@@ -371,8 +376,6 @@ async def _build_detail_context(tracker_id: int) -> dict:
         if item.get("delta", {}).get("type") == "missing":
             _split_timestamps(item["flight"])
 
-    history = await get_price_history(tracker_id)
-
     top_n = tracker["top_n"]
     sticky_keys = await get_sticky_top_flight_keys(tracker_id, top_n)
 
@@ -383,12 +386,21 @@ async def _build_detail_context(tracker_id: int) -> dict:
             return f"{airline} {num}"
         return num or airline or flight.get("flight_key", "")
 
-    # Index current non-missing flights by key for label lookup.
-    current_flight_map = {
-        f["flight"]["flight_key"]: f["flight"]
-        for f in flights_with_delta
-        if f.get("delta", {}).get("type") != "missing"
-    }
+    # Index current non-missing flights by key for label lookup. current_flights
+    # is ORDER BY price ASC; setdefault keeps the cheapest row per flight_key.
+    current_flight_map = {}
+    for f in flights_with_delta:
+        if f.get("delta", {}).get("type") != "missing":
+            current_flight_map.setdefault(f["flight"]["flight_key"], f["flight"])
+
+    # Only fetch history for flight_keys the chart / window.allFlights actually
+    # need: every current flight (filters.js can promote any of them into the
+    # visible chart on a filter change) plus sticky keys (ever-cheap, possibly
+    # no longer current). A tracker accumulates snapshots forever, so pulling
+    # every distinct flight_key it's ever seen (tens of thousands of rows for
+    # a months-old tracker) here was the dominant cost of loading this page.
+    history_keys = set(current_flight_map) | sticky_keys
+    history = await get_price_history(tracker_id, flight_keys=list(history_keys)) if history_keys else []
 
     # Build history series and keep the most-recent row per key for label fallback.
     history_by_key: dict[str, list] = {}
@@ -407,12 +419,22 @@ async def _build_detail_context(tracker_id: int) -> dict:
             return _flight_label(history_latest[key])
         return key
 
-    # Current top-N keys in price order → determine color rank.
-    ordered_top_keys = [
-        f["flight"]["flight_key"]
-        for f in flights_with_delta[:top_n]
-        if f.get("delta", {}).get("type") != "missing"
-    ]
+    # Current top-N keys in price order → determine color rank. Walk in order
+    # and keep the first (cheapest) occurrence of each distinct flight_key,
+    # stopping at top_n distinct keys -- a duplicated key must not consume two
+    # colour slots.
+    ordered_top_keys = []
+    _seen_top_keys = set()
+    for f in flights_with_delta:
+        if f.get("delta", {}).get("type") == "missing":
+            continue
+        key = f["flight"]["flight_key"]
+        if key in _seen_top_keys:
+            continue
+        _seen_top_keys.add(key)
+        ordered_top_keys.append(key)
+        if len(ordered_top_keys) >= top_n:
+            break
     # Sticky keys that are not in the current top-N (ever-cheap, now displaced).
     top_key_set = set(ordered_top_keys)
     sticky_extras = [k for k in sticky_keys if k not in top_key_set]
@@ -435,11 +457,15 @@ async def _build_detail_context(tracker_id: int) -> dict:
     }
 
     all_flights = []
+    _seen_all_flight_keys = set()
     for f in flights_with_delta:
         if f.get("delta", {}).get("type") == "missing":
             continue
         flight = f["flight"]
         key = flight["flight_key"]
+        if key in _seen_all_flight_keys:
+            continue
+        _seen_all_flight_keys.add(key)
         all_flights.append({
             "flight_key": key,
             "label": _flight_label(flight),

@@ -244,20 +244,28 @@ async def get_flight_prices_for_snapshot(snapshot_id: int) -> list:
     return [_row_to_dict(r) for r in rows]
 
 
-async def get_price_history(tracker_id: int) -> list:
+async def get_price_history(tracker_id: int, flight_keys: list[str] | None = None) -> list:
     db_path = get_db_path()
-    async with aiosqlite.connect(db_path) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            """SELECT fp.flight_key, fp.price, fp.currency, fp.airline,
+    query = """SELECT fp.flight_key, fp.price, fp.currency, fp.airline,
                       fp.flight_number, fp.departure_time, fp.arrival_time,
                       fp.duration_min, fp.stops, s.searched_at
                FROM flight_prices fp
                JOIN snapshots s ON fp.snapshot_id = s.id
-               WHERE fp.tracker_id = ?
-               ORDER BY s.searched_at ASC""",
-            (tracker_id,),
-        ) as cur:
+               WHERE fp.tracker_id = ?"""
+    params: list = [tracker_id]
+
+    if flight_keys is not None:
+        if not flight_keys:
+            return []
+        placeholders = ",".join("?" for _ in flight_keys)
+        query += f" AND fp.flight_key IN ({placeholders})"
+        params.extend(flight_keys)
+
+    query += " ORDER BY s.searched_at ASC"
+
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(query, params) as cur:
             rows = await cur.fetchall()
     return [_row_to_dict(r) for r in rows]
 
@@ -449,30 +457,24 @@ async def get_historical_best_price(tracker_id: int) -> float | None:
 async def get_sticky_top_flight_keys(tracker_id: int, top_n: int) -> set[str]:
     db_path = get_db_path()
     async with aiosqlite.connect(db_path) as db:
-        db.row_factory = aiosqlite.Row
         async with db.execute(
-            """SELECT fp.flight_key, fp.price, s.id AS snapshot_id
-               FROM flight_prices fp
-               JOIN snapshots s ON fp.snapshot_id = s.id
-               WHERE fp.tracker_id = ?
-               ORDER BY s.id, fp.price ASC""",
-            (tracker_id,),
+            """WITH deduped AS (
+                   SELECT snapshot_id, flight_key, MIN(price) AS price
+                   FROM flight_prices
+                   WHERE tracker_id = ?
+                   GROUP BY snapshot_id, flight_key
+               ),
+               ranked AS (
+                   SELECT flight_key,
+                          ROW_NUMBER() OVER (PARTITION BY snapshot_id ORDER BY price ASC) AS rn
+                   FROM deduped
+               )
+               SELECT DISTINCT flight_key FROM ranked WHERE rn <= ?""",
+            (tracker_id, top_n),
         ) as cur:
             rows = await cur.fetchall()
 
-    ranked = {}
-    for row in rows:
-        sid = row["snapshot_id"]
-        if sid not in ranked:
-            ranked[sid] = []
-        ranked[sid].append(row["flight_key"])
-
-    keys: set[str] = set()
-    for flight_keys in ranked.values():
-        for key in flight_keys[:top_n]:
-            keys.add(key)
-
-    return keys
+    return {row[0] for row in rows}
 
 
 async def insert_log(level: str, event: str, tracker_id: int | None = None, message: str | None = None) -> dict:
