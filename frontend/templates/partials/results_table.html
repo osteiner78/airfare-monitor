@@ -10,6 +10,7 @@
             <th>Duration</th>
             <th>Stops</th>
             <th>Price</th>
+            <th>Source</th>
             <th>Change</th>
         </tr>
     </thead>
@@ -30,6 +31,7 @@
             <td>{% if item.flight.duration_min is not none %}{{ item.flight.duration_min // 60 }}h {{ "%02d"|format(item.flight.duration_min % 60) }}m{% else %}—{% endif %}</td>
             <td>{{ item.flight.stops }}</td>
             <td class="price-cell">{{ item.flight.currency | currency_symbol }}{{ "%.0f"|format(item.flight.price) }}</td>
+            <td>{{ item.flight.source | source_label }}</td>
             <td>{% include "partials/price_badge.html" %}</td>
         </tr>
         {% endfor %}

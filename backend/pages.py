@@ -125,6 +125,13 @@ _env.filters["airline_code"] = _airline_code
 _CURRENCY_SYMBOLS: dict[str, str] = {"EUR": "€", "USD": "$", "GBP": "£", "CHF": "CHF "}
 _env.filters["currency_symbol"] = lambda c: _CURRENCY_SYMBOLS.get(c or "", (c or "") + " ")
 
+_SOURCE_LABELS: dict[str, str] = {
+    "google_flights": "Google Flights",
+    "fast_flights": "Google Flights (alt)",
+    "kayak": "Kayak",
+}
+_env.filters["source_label"] = lambda s: _SOURCE_LABELS.get(s, s)
+
 
 def _split_timestamps(flight_dict: dict) -> None:
     raw_dates: dict[str, str] = {}
