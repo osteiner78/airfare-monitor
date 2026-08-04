@@ -8,6 +8,8 @@ services:
       - .:/app
     environment:
       AIRFARE_DB_PATH: /app/data/airfare.db
+    env_file: .env
+    shm_size: 1gb
     restart: unless-stopped
     command: uvicorn backend.main:app --host 0.0.0.0 --port 8100 --reload --reload-dir backend
     healthcheck:
@@ -19,5 +21,5 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
-          cpus: "0.5"
+          memory: 1.5G
+          cpus: "2.0"
