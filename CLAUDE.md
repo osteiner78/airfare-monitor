@@ -95,7 +95,12 @@ uvicorn backend.main:app --reload
 - Each source implements `SearchSource` protocol from `backend/sources/base.py`
 - Sources return `list[FlightResult]` — normalized, no source-specific fields
 - Each source file is self-contained: one file, one source
-- New sources = new file in `sources/` + register in `__init__.py`
+- New sources = new file in `sources/` + register in `__init__.py` **unless
+  the source is opt-in per tracker rather than global** — `KayakSource`
+  (`backend/sources/kayak.py`, plan 017) is deliberately **not** registered in
+  `get_sources()`; it's constructed directly wherever the per-tracker
+  `kayak_enabled` flag is checked (the scheduler, once Phase 3 wires it in),
+  not run unconditionally on every search cycle.
 
 ## Verification requirements
 
@@ -151,6 +156,7 @@ Ask before:
 - The `backend/sources/` directory is designed for pluggable sources. To add Amadeus: create `amadeus.py` implementing `SearchSource`, add to `__init__.py`, done.
 - Notification delivery (email, push) is explicitly v2. The DB table and evaluation logic exist in v1 but no transport is wired.
 - If the `fli` library breaks due to Google page changes, the fix is isolated to `backend/sources/google_flights.py`.
+- **`KayakSource` (`backend/sources/kayak.py`, plan 017)**: renders `kayak.com` with headless Playwright Chromium and extracts flights via an LLM (DeepSeek, OpenAI-compatible API — key in `os.environ["DEEPSEEK_API_KEY"]`, read at call time, never at import time). `playwright`/`openai` are imported **lazily inside `_render`/`_extract`**, not at module load, specifically so unit tests can mock those two methods and exercise `search()`'s control flow without either package installed (real installs only land via Phase 5's `RUN playwright install --with-deps chromium` in the Docker image). Every extracted price is grounded against the rendered page text in `_validate` before being trusted (`historical_best_price` is `MIN` over all rows and never recomputed — a hallucinated cheap price is permanent). `_LLM_MODEL = "deepseek-chat"` in `kayak.py` is an **unverified placeholder** (marked with a `TODO`) — confirm against DeepSeek's live model list, or switch to Claude Haiku 4.5, before relying on it. Not registered in `sources/__init__.py::get_sources()` — see "Flight source architecture" above.
 - **Template rendering bypass**: Python 3.13 + Jinja2 3.1.6 has a bug where Starlette's `Jinja2Templates.TemplateResponse` triggers `TypeError: unhashable type: 'dict'` in Jinja2's LRUCache when `env.globals` is non-empty. `backend/pages.py` works around this by using `jinja2.Environment(cache_size=0)` directly with `get_template()` + `render()` + `HTMLResponse()`. If upgrading Python/Jinja2/Starlette, try restoring `Jinja2Templates` — but verify with a quick smoke test first.
 - **Router separation**: `backend/api.py` handles JSON API under `/api/*`, `backend/pages.py` handles HTML pages at `/*`. Both are included in `main.py`. The pages router also has HTMX-specific routes (toggle, form submit) that return HTML partials.
 - **Chart.js time adapter issue**: CDN-loaded `chartjs-adapter-date-fns@3` fails silently on some browser/network configurations (blank chart, no JS error). The current working solution is a numeric axis (`type: "linear"`) where x-values are epoch milliseconds from `new Date(iso).getTime()`, with custom tick formatting via `ticks.callback`. The adapter CDN is NOT loaded — it was removed after repeated failures. If restoring time adapter: verify with `chart_test_time.html` first, load it BEFORE Chart.js, and confirm the adapter bundle resolves (curl shows 200 but the browser may block due to CORS or Content-Type mismatch).
