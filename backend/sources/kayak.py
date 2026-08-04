@@ -26,6 +26,15 @@ _LLM_TIMEOUT_S = 30.0
 # both render timeouts in full plus the LLM call, with slack.
 _OVERALL_TIMEOUT_S = 2 * _RENDER_TIMEOUT_S + _LLM_TIMEOUT_S + 30.0
 
+# The first six were written from guesses before any block had been seen and
+# matched NONE of the interstitial Kayak actually served (Phase 6, 2026-08-04)
+# -- a real block was logged as "no flights found", making the block-rate
+# sample uninterpretable. The rest are taken from captured page text: the
+# "thinks you are a"/"not a bot"/"only useful for humans" group is Kayak's own
+# wording, verbatim; "pardon our interruption"/"press and hold" is PerimeterX's
+# standard challenge copy. Keep markers specific to interstitial phrasing --
+# a false positive returns [] without ever extracting, silently dropping real
+# prices, which is as damaging as a miss.
 _BLOCKED_MARKERS = (
     "verify you are human",
     "unusual traffic",
@@ -33,6 +42,11 @@ _BLOCKED_MARKERS = (
     "captcha",
     "access denied",
     "automated queries",
+    "thinks you are a",
+    "i am not a bot",
+    "only useful for humans",
+    "pardon our interruption",
+    "press and hold",
 )
 
 _EXTRACTION_SYSTEM_PROMPT = (

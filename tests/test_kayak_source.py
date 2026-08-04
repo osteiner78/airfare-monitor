@@ -88,6 +88,43 @@ async def test_looks_blocked_false_for_empty_string():
     assert KayakSource._looks_blocked("") is False
 
 
+# Verbatim from the interstitial Kayak actually served on 2026-08-04 during
+# Phase 6 live verification (.agent/reports/017-phase-6.md). The original
+# marker list was written from guesses and matched NONE of this, so a real
+# block was logged as "no flights found" -- indistinguishable from a route
+# that genuinely has no flights, which made the phase's own block-rate
+# sample uninterpretable.
+_REAL_KAYAK_BLOCK_PAGE = (
+    'If you are seeing this page, it means that KAYAK thinks you are a "bot," '
+    "and the page you were trying to get to is only useful for humans.\n"
+    "\n"
+    "But I am not a bot! I'm human!\n"
+)
+
+
+async def test_looks_blocked_true_for_real_kayak_interstitial():
+    from backend.sources.kayak import KayakSource
+    assert KayakSource._looks_blocked(_REAL_KAYAK_BLOCK_PAGE) is True
+
+
+async def test_looks_blocked_true_for_perimeterx_press_and_hold_challenge():
+    from backend.sources.kayak import KayakSource
+    text = "Pardon Our Interruption\nPress and Hold to confirm you are a human"
+    assert KayakSource._looks_blocked(text) is True
+
+
+async def test_looks_blocked_false_for_long_results_page_mentioning_humans():
+    """False positives are as damaging as misses: a page wrongly called blocked
+    returns [] without ever reaching extraction, silently dropping real prices.
+    Markers must be specific to interstitial copy, not generic English."""
+    from backend.sources.kayak import KayakSource
+    text = (
+        "Cheapest\n€785\n26h 25m\nTAP AIR PORTUGAL\n1 stop\nGRU-ZRH\nSelect\n"
+        "Humanitarian fare available\nBot Air Charter\nSelect\n"
+    )
+    assert KayakSource._looks_blocked(text) is False
+
+
 # --- search(): mapping extracted data to FlightResult ---
 
 async def test_search_returns_flight_results_mapped_from_extraction():
