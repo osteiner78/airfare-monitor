@@ -128,8 +128,42 @@ precedent set by plan 016's Phase 3).
 
 **likely-good** — every plan task (5.1-5.7) completed and verified against the
 plan's own commands, full test suite green post-rebuild, service healthy and
-serving traffic. Downgraded from "certain" only because of the opencode.ai
-endpoint discovery: Phase 5's own success criteria (infra runs, key present,
-limits/shm correct) are fully met, but the *practical* next step (Phase 6) is
-now known to be blocked on a Phase 2 fix that this session deliberately left
-undone to respect scope.
+serving traffic. Downgraded from "certain" only because the opencode.ai
+endpoint fix (below) is unverified against a live call.
+
+## Addendum (same session, after user review of this report)
+
+The user reviewed the "Deviations" section above and explicitly authorized
+fixing `kayak.py`'s LLM endpoint config, overriding the earlier scope
+decision to leave Phase 2 code untouched. Applied:
+
+`backend/sources/kayak.py`:
+```
+_LLM_BASE_URL = "https://api.deepseek.com"    ->  "https://opencode.ai/zen/go/v1"
+_LLM_MODEL    = "deepseek-chat"               ->  "deepseek-v4-flash"
+```
+`_API_KEY_ENV` (`"DEEPSEEK_API_KEY"`) left unchanged — renaming the env var
+would touch `.env`, `docker-compose.yml`, tests, and both CLAUDE.md files for
+no functional benefit; a comment now clarifies the name is historical, the
+value is an opencode.ai Go proxy key.
+
+Verification:
+```
+$ docker exec airfare-monitor python -m pytest tests/test_kayak_source.py tests/test_kayak_scheduling.py -v -k "not slow"
+======================= 47 passed, 1 deselected in 3.28s =======================
+
+$ docker exec airfare-monitor python -m pytest tests/ -k "not slow"
+====================== 290 passed, 3 deselected in 22.95s ======================
+```
+No test asserts the literal base_url/model values — `test_error_message_does_not_contain_api_key`
+(the only test touching `_API_KEY_ENV`) mocks `_extract` directly, so the
+constants are never exercised by the unit suite. This edit is consequently
+**unverified against a live call** — same caveat as before, just now living in
+the code instead of blocking on it. First real signal will be Phase 6's
+manual `search_and_store` trigger; if that gets an auth or model-not-found
+error, try the `opencode/deepseek-v4-flash` prefix variant (see the code
+comment).
+
+This closes the one open follow-up from the original report. `git commit`
+for this addendum is separate from the phase-5.1-5.7 commit — see `git log`
+for `[phase-5.8]`.
