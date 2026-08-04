@@ -230,3 +230,54 @@ async def test_chart_top_n_counts_distinct_flights_not_rows(client):
     assert colors["TP TP84"] == CHART_COLORS[0]
     assert colors["LX LX1234"] == CHART_COLORS[1]
     assert colors["AF AF123"] == CHART_COLORS[2]
+
+
+# --- the chart history series is per-flight too (plan 017 task 1.10) ---
+# history_by_key is built by appending one point per get_price_history row, so
+# a flight quoted by two sources in one snapshot produces two points at the
+# SAME timestamp -- the line draws a vertical segment at every such snapshot.
+# The same feed backs window.allFlights[].data, so filters.js redraws inherit
+# it. Found by probing the shipped Phase 1 code; the planning grep missed it.
+
+async def _seed_dual_sourced_snapshot(client):
+    from backend.db import create_snapshot, insert_flight_prices
+
+    await client.post("/api/trackers", json=TRACKER_FORM)
+    snapshot = await create_snapshot(1, results_count=2)
+    await insert_flight_prices(snapshot["id"], 1, [
+        _price_row(SHARED_KEY, "google_flights", 711.0),
+        _price_row(SHARED_KEY, "kayak", 785.0),
+    ])
+
+
+def _series_for(chart_data, label):
+    return next(d for d in chart_data if d["label"] == label)["data"]
+
+
+@pytest.mark.asyncio
+async def test_chart_series_has_one_point_per_snapshot_for_a_dual_sourced_flight(client):
+    await _seed_dual_sourced_snapshot(client)
+
+    response = await client.get("/trackers/1")
+    chart_data = _extract_js_global(response.text, "chartData")
+    assert chart_data is not None
+
+    series = _series_for(chart_data, "TP TP84")
+    timestamps = [p["x"] for p in series]
+    assert len(timestamps) == len(set(timestamps)), f"duplicate x values: {series}"
+    assert len(series) == 1
+
+
+@pytest.mark.asyncio
+async def test_chart_series_point_uses_cheapest_price_for_a_dual_sourced_flight(client):
+    """Consistent with every other dedup site in phase 1: cheapest quote wins.
+    get_price_history orders by searched_at with no price tiebreak, so row
+    order alone must not be relied on to pick it."""
+    await _seed_dual_sourced_snapshot(client)
+
+    response = await client.get("/trackers/1")
+    chart_data = _extract_js_global(response.text, "chartData")
+    assert chart_data is not None
+
+    series = _series_for(chart_data, "TP TP84")
+    assert [p["y"] for p in series] == [711.0]

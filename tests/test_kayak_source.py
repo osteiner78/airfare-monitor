@@ -305,6 +305,60 @@ async def test_search_drops_hallucinated_price_not_present_in_rendered_text():
     assert [r.price for r in results] == [785.0]
 
 
+async def test_search_warns_when_validation_drops_every_row():
+    """A fully-hallucinated extraction must not look like a clean 'route has no
+    flights' success. search_and_store only logs when last_error is set, and
+    this project's observability is the system_logs table on /monitor -- the
+    logger.warning calls inside _validate never reach it."""
+    from backend.sources.kayak import KayakSource
+
+    ungrounded = [{
+        "airline": "TAP AIR PORTUGAL",
+        "flight_number": "TP 90",
+        "departure_time": "2026-08-21T06:00:00",
+        "arrival_time": "2026-08-21T20:00:00",
+        "duration_min": 840,
+        "stops": 1,
+        "price": 412.0,  # not present anywhere in _sample_body()
+    }]
+
+    source = KayakSource()
+    with patch.object(source, "_render", AsyncMock(return_value=_sample_body())), \
+         patch.object(source, "_extract", AsyncMock(return_value=ungrounded)):
+        results = await source.search("GRU", "ZRH", "2026-08-21", None, "EUR", 5)
+
+    assert results == []
+    assert source.last_error is not None
+    assert source.last_error_level == "WARNING"
+
+
+async def test_search_reports_dropped_row_count_when_some_rows_survive_validation():
+    """A source quietly losing half its results to the grounding check is a
+    signal about extraction quality -- and the input the reliability follow-up
+    plan needs. Partial drops must still surface, without failing the run."""
+    from backend.sources.kayak import KayakSource
+
+    mixed = _sample_extraction() + [{
+        "airline": "TAP AIR PORTUGAL",
+        "flight_number": "TP 90",
+        "departure_time": "2026-08-21T06:00:00",
+        "arrival_time": "2026-08-21T20:00:00",
+        "duration_min": 840,
+        "stops": 1,
+        "price": 412.0,
+    }]
+
+    source = KayakSource()
+    with patch.object(source, "_render", AsyncMock(return_value=_sample_body())), \
+         patch.object(source, "_extract", AsyncMock(return_value=mixed)):
+        results = await source.search("GRU", "ZRH", "2026-08-21", None, "EUR", 5)
+
+    assert [r.price for r in results] == [785.0]
+    assert source.last_error is not None
+    assert "1" in source.last_error  # how many rows were dropped
+    assert source.last_error_level == "WARNING"
+
+
 # --- secret hygiene ---
 
 async def test_error_message_does_not_contain_api_key(monkeypatch):

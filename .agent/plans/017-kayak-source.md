@@ -114,15 +114,22 @@ that fli also quotes would render as a phantom "new" flight plus a phantom
 `window.allFlights`. Phase 1 redefines `flight_key` before Kayak's own code
 is written.
 
-**Five last-write-wins / duplicate-row sites become reachable** the moment a
+**Six last-write-wins / duplicate-row sites become reachable** the moment a
 `flight_key` can legitimately repeat within one snapshot. Three are dict
 comprehensions over a `ORDER BY price ASC` list
 (`get_flight_prices_for_snapshot`), and dict comprehensions are
 last-write-wins — ascending price order means the surviving row is the *most
-expensive* per key. Two more are duplicate-row problems rather than
-dict-overwrite problems. Plus one SQL site. All are listed in Phase 1's
-tasks. All are inert until `make_flight_key` changes, which is why they are
-fixed in the same phase.
+expensive* per key. Three more are duplicate-row problems rather than
+dict-overwrite problems (two list-append sites plus the chart history
+series). Plus one SQL site. All are listed in Phase 1's tasks. All are inert
+until `make_flight_key` changes, which is why they are fixed in the same
+phase.
+
+The count grew from five to six *after* Phase 1 shipped — the sixth
+(`history_by_key`, task 1.10) was found by probing the implemented code
+rather than by the planning grep. Treat the task list as a floor: when
+auditing for further sites, the question is not "is this a dict?" but
+"does this assume one row per `flight_key` per snapshot?"
 
 **Existing test coverage to build from:** `tests/test_sources.py`,
 `test_fast_flights_source.py`, `test_fallback_source.py` (protocol
@@ -256,6 +263,23 @@ is unambiguously this phase's fault.
     Bonus: the backfill merges those 189 `fast_flights` rows into their
     Google counterparts, which is exactly the intent of Decision 2.
 
+1.10 **(Addendum, added 2026-08-04 after Phase 1 shipped — a sixth site the
+    original task list missed.)** `pages.py` `history_by_key`: built by
+    appending one point per row returned by `get_price_history`, so a flight
+    quoted by two sources in the same snapshot yields **two chart points at
+    the same timestamp**. Confirmed empirically against the shipped Phase 1
+    code:
+    ```
+    [{'x': '2026-08-04T10:47:02', 'y': 711.0},
+     {'x': '2026-08-04T10:47:02', 'y': 785.0}]
+    ```
+    The chart line draws a vertical segment at every snapshot where both
+    sources quoted that flight, and the same `history_by_key` feed backs
+    `window.allFlights[].data`, so `filters.js` redraws inherit it. Keep the
+    cheapest price per `(flight_key, searched_at)`. `get_price_history`
+    returns `ORDER BY s.searched_at ASC` with no price tiebreak, so either
+    add `, fp.price ASC` to that ORDER BY and skip a repeated timestamp, or
+    reduce with a `min()` — don't assume row order alone.
 ### Files
 - Modify: `backend/fingerprint.py`, `backend/pages.py` (four sites),
   `backend/db.py` (`get_sticky_top_flight_keys`)
@@ -316,6 +340,11 @@ missed), all confirmed failing first:
 **Added to `tests/test_chart_data.py`** for 1.7 (it sits with the existing
 sticky-key tests rather than in a new file):
 - `test_get_sticky_top_flight_keys_returns_top_n_distinct_flights_when_a_key_repeats_in_a_snapshot`
+
+**Added to `tests/test_pages_multi_source.py`** for the 1.10 addendum
+(written after Phase 1 shipped; fails against the shipped Phase 1 code):
+- `test_chart_series_has_one_point_per_snapshot_for_a_dual_sourced_flight`
+- `test_chart_series_point_uses_cheapest_price_for_a_dual_sourced_flight`
 
 ### Success criteria
 All tests in `tests/test_fingerprint.py` and `tests/test_pages_multi_source.py`
@@ -426,6 +455,40 @@ This phase produces a source that satisfies `SearchSource` in isolation.
 2.11 Read the API key via `os.environ[...]` **at call time**, not import
     time, so a missing key surfaces as a clean `last_error` rather than an
     import-time crash that takes the whole app down.
+2.12 **(Addendum, added 2026-08-04 after Phase 2 shipped.)** A run where
+    `_validate` drops **every** row must set `last_error` +
+    `last_error_level = "WARNING"`. As shipped it returns `[]` with
+    `last_error` left at `None`, so a fully-hallucinated extraction is
+    indistinguishable from a clean "route has no flights" success:
+    ```
+    ALL ROWS HALLUCINATED -> results: [] | last_error: None | level: ERROR
+    ```
+    The drops do reach `logger.warning`, but this project's observability is
+    the `system_logs` table rendered on `/monitor`, not stdlib logging —
+    nothing configures a handler that lands stdlib records there, so those
+    warnings are effectively invisible. `search_and_store` (Phase 3.4) only
+    calls `insert_log` when `last_error` is set, so without this the exact
+    failure the grounding check exists to catch produces no visible trace.
+    Contradicts Decision 8 ("visible failure logging when it doesn't
+    succeed"). Also worth carrying the dropped-row count in the message when
+    *some* rows survive — a source quietly losing half its results to the
+    grounding check is a signal about extraction quality, and it's the input
+    the reliability follow-up plan needs.
+2.13 Small cleanups in `backend/sources/kayak.py`, none behavioural on the
+    happy path:
+    - `_map_result` sets `stops=row.get("stops")`, which can be `None`, while
+      `FlightResult.stops` is typed `int` and every other source guarantees
+      one (`max(len(legs) - 1, 0)`). Default to `0`, or widen the dataclass
+      field — but pick one deliberately rather than leaving sources
+      inconsistent.
+    - `_wait_for_results_stable` uses `asyncio.get_event_loop()`; inside a
+      coroutine on 3.12 that should be `asyncio.get_running_loop()`.
+    - The timeout budget doesn't add up: `page.goto(timeout=45s)` plus
+      `_wait_for_results_stable(cap=45s)` is 90s worst case for the render
+      alone, which is exactly `_OVERALL_TIMEOUT_S`, leaving nothing for the
+      LLM call. It degrades to a clean `ERROR` so nothing breaks, but the
+      constants imply a budget they don't provide — either raise the overall
+      cap or lower the render halves.
 
 ### Files
 - New: `backend/sources/kayak.py`
@@ -488,6 +551,11 @@ This phase produces a source that satisfies `SearchSource` in isolation.
   (pins that `_validate` is *wired into* `search()`, not merely importable)
 - `test_error_message_does_not_contain_api_key` (sets `DEEPSEEK_API_KEY` to a
   sentinel — rename if 2.11 settles on a different env var)
+
+**Added for the 2.12 addendum** (written after Phase 2 shipped; fails
+against the shipped Phase 2 code):
+- `test_search_warns_when_validation_drops_every_row`
+- `test_search_reports_dropped_row_count_when_some_rows_survive_validation`
 
 **Note for the implementer:** the v1 `_render` mocks returned the stub string
 `"<rendered page text>"`, which contains no price and which the new grounding
