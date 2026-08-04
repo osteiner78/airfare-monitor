@@ -8,14 +8,15 @@ from backend.sources.base import FlightResult
 logger = logging.getLogger(__name__)
 
 _API_KEY_ENV = "DEEPSEEK_API_KEY"
-# The key behind DEEPSEEK_API_KEY is an opencode.ai Go proxy key (opencode Go
-# subscription, not a native DeepSeek API key), so base_url/model point at
-# opencode's OpenAI-compatible endpoint rather than api.deepseek.com directly.
-# TODO(plan 017 decision 6, phase 5 follow-up): sourced from opencode's docs
-# via WebFetch, not an actual live call -- confirm with a real request before
-# trusting this in prod (Phase 6 does exactly that).
-_LLM_BASE_URL = "https://opencode.ai/zen/go/v1"
-_LLM_MODEL = "deepseek-v4-flash"
+# The key behind DEEPSEEK_API_KEY is an opencode.ai key (not a native DeepSeek
+# API key), so base_url/model point at opencode's OpenAI-compatible endpoint
+# rather than api.deepseek.com directly. Points at opencode Zen (not the Go
+# proxy) using the free-tier model id -- the Go proxy's "deepseek-v4-flash"
+# hit a regional access gate and then a monthly usage cap during Phase 6 live
+# verification; Zen's "deepseek-v4-flash-free" worked with the same key and
+# has no such cap (confirmed 2026-08-04 with a real request).
+_LLM_BASE_URL = "https://opencode.ai/zen/v1"
+_LLM_MODEL = "deepseek-v4-flash-free"
 
 _RENDER_TIMEOUT_S = 45.0
 _LLM_TIMEOUT_S = 30.0
