@@ -340,6 +340,29 @@ async def test_kayak_failure_logs_kayak_search_error_at_its_own_level(db_path):
     )
 
 
+async def test_search_and_store_survives_tracker_row_without_kayak_columns(db_path):
+    """Active dev deploys code the instant it is edited, but the trackers
+    ALTER TABLE is confirmation-gated -- so there is always a window where the
+    new code runs against an un-migrated table. A missing column must degrade
+    to 'Kayak off', not raise KeyError out of search_and_store and kill every
+    tracker's search. Observed live on 2026-08-04: 28 consecutive job failures,
+    all price collection stalled."""
+    from backend.db import create_tracker, get_latest_snapshot, get_tracker
+    from backend.scheduler import search_and_store
+
+    tracker = await create_tracker(**TRACKER)
+    unmigrated = {k: v for k, v in (await get_tracker(tracker["id"])).items()
+                  if k not in ("kayak_enabled", "kayak_next_due_at")}
+
+    with _fli_returning(_flight("google_flights", 711.0, "TP 88")), \
+         patch("backend.db.get_tracker", AsyncMock(return_value=unmigrated)):
+        await search_and_store(tracker["id"], delay=False)  # must not raise
+
+    snapshot = await get_latest_snapshot(tracker["id"])
+    assert snapshot is not None
+    assert snapshot["results_count"] == 1
+
+
 async def test_kayak_exception_never_propagates_out_of_search_and_store(db_path):
     """KayakSource.search is contractually never-raises, but search_and_store
     must not depend on that contract holding -- an escaping exception would

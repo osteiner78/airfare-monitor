@@ -71,7 +71,11 @@ async def search_and_store(tracker_id: int, delay: bool = True) -> None:
         except Exception as e:
             await insert_log("ERROR", "search_error", tracker_id=tracker_id, message=str(e))
 
-    if tracker["kayak_enabled"] and _kayak_due(tracker["kayak_next_due_at"], datetime.now()):
+    # .get(), not [] -- in Active dev the code is live the moment it is edited,
+    # while the trackers ALTER TABLE is confirmation-gated, so new code always
+    # runs against an un-migrated table for some window. A missing column must
+    # mean "Kayak off", never a KeyError that kills the whole search.
+    if tracker.get("kayak_enabled") and _kayak_due(tracker.get("kayak_next_due_at"), datetime.now()):
         try:
             if delay:
                 await asyncio.sleep(random.uniform(0, 15 * 60))
