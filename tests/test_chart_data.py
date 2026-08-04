@@ -60,6 +60,27 @@ async def test_get_sticky_top_flight_keys_returns_empty_for_nonexistent_tracker(
 
 
 @pytest.mark.asyncio
+async def test_get_sticky_top_flight_keys_returns_top_n_distinct_flights_when_a_key_repeats_in_a_snapshot(db_path):
+    """FAILURE-MODE for plan 017 phase 1.7. The ROW_NUMBER() window ranks ROWS
+    within a snapshot, so once two sources can quote the same physical flight
+    (flight_key no longer carries source), the duplicate eats a rank slot and
+    the chart silently tracks fewer than top_n distinct flights."""
+    from backend.db import create_snapshot, create_tracker, get_sticky_top_flight_keys, insert_flight_prices
+
+    tracker = await create_tracker(origin="GVA", destination="BCN", depart_date="2026-09-15")
+    snapshot = await create_snapshot(tracker["id"], results_count=4)
+    await insert_flight_prices(snapshot["id"], tracker["id"], [
+        {"flight_key": "VY|6201|2026-01-01T00:00:00", "source": "google_flights", "price": 33.0, "currency": "EUR"},
+        {"flight_key": "VY|6201|2026-01-01T00:00:00", "source": "kayak", "price": 35.0, "currency": "EUR"},
+        {"flight_key": "U2|7108|2026-01-01T00:00:00", "source": "google_flights", "price": 45.0, "currency": "EUR"},
+        {"flight_key": "LH|1234|2026-01-01T00:00:00", "source": "google_flights", "price": 100.0, "currency": "EUR"},
+    ])
+
+    keys = await get_sticky_top_flight_keys(tracker["id"], 2)
+    assert keys == {"VY|6201|2026-01-01T00:00:00", "U2|7108|2026-01-01T00:00:00"}
+
+
+@pytest.mark.asyncio
 async def test_chart_datasets_limited_to_sticky_top_n(client):
     from backend.db import create_snapshot, create_tracker, insert_flight_prices
     await client.post("/api/trackers", json={
