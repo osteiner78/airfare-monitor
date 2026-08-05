@@ -8,6 +8,7 @@ services:
       - .:/app
     environment:
       AIRFARE_DB_PATH: /app/data/airfare.db
+      DISPLAY: ":99"
     env_file: .env
     shm_size: 1gb
     restart: unless-stopped

@@ -4,6 +4,14 @@ import aiosqlite
 from unittest.mock import AsyncMock
 
 
+@pytest.fixture(autouse=True)
+def kayak_samples_dir(tmp_path, monkeypatch):
+    """Keep the suite from writing Kayak sample captures into the repo's real
+    data/kayak-samples/, where they would pollute the plan 018 Phase 3
+    experiment record with synthetic bodies."""
+    monkeypatch.setenv("AIRFARE_KAYAK_SAMPLES_DIR", str(tmp_path / "kayak-samples"))
+
+
 @pytest_asyncio.fixture
 async def db_path(tmp_path, monkeypatch):
     path = str(tmp_path / "test.db")

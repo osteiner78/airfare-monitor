@@ -6,5 +6,5 @@ flights
 fast-flights
 jinja2>=3.1
 python-multipart>=0.0.9
-playwright==1.62.0
+patchright==1.61.2
 openai>=1.0

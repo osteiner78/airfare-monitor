@@ -3,8 +3,10 @@ import json
 import logging
 import os
 import random
+import time
 from dataclasses import dataclass, field
 
+from backend.kayak_samples import _DEFAULT_SAMPLES_DIR, _SAMPLES_DIR_ENV, capture_sample
 from backend.sources.base import FlightResult
 
 logger = logging.getLogger(__name__)
@@ -70,17 +72,25 @@ _EXTRACTION_SYSTEM_PROMPT = (
 # set matched with any(), not a lookup keyed by config.locale.
 _RESULT_MARKERS = {"Select", "Selecionar", "Auswählen"}
 
+# A real results page is long and carries one action button per itinerary; the
+# interstitial is a couple of short paragraphs with none. Complements
+# _BLOCKED_MARKERS (plan 018 task 2.5): markers catch the interstitial we have
+# already seen, this catches its next rewrite. Deliberately requires BOTH
+# conditions -- a long page with no recognised button is a redesign or an
+# unexpected locale, not evidence of a block, and calling it blocked would
+# silently discard real prices.
+_MIN_RESULTS_PAGE_CHARS = 2000
+
 
 @dataclass
 class KayakRenderConfig:
     """The C1-C4 evasion bundle (plan 018) as a parameter object.
 
-    Defaults are the deployable stack: headful under Xvfb (C2, needs plan
-    018 Phase 2 infra to actually launch), a persistent profile + warm-up
-    navigation (C3), and CDP-leak patching (C4, applied via the
-    rebrowser-playwright swap in Phase 2 -- `stealth` just records intent
-    here). C5 (attaching to a manually-launched Chrome) has no unattended
-    form and is deliberately unreachable through this config.
+    Defaults are the deployable stack: headful under Xvfb (C2), a persistent
+    profile + warm-up navigation (C3), and CDP-leak patching (C4, applied by
+    the patchright swap in Phase 2 -- `stealth` just records intent here).
+    C5 (attaching to a manually-launched Chrome) has no unattended form and
+    is deliberately unreachable through this config.
     """
 
     headless: bool = False
@@ -97,10 +107,25 @@ class KayakRenderConfig:
     warmup_url: str | None = "https://www.kayak.com/"
     warmup_dwell_s: tuple[float, float] = (2.0, 5.0)
     stealth: bool = True
+    # Names the arm a captured sample belongs to, so past samples stay
+    # re-classifiable once the bundle changes (plan 018 task 2.4).
+    config_id: str = "c1-c4"
+    samples_dir: str | None = field(
+        default_factory=lambda: os.environ.get(_SAMPLES_DIR_ENV, _DEFAULT_SAMPLES_DIR)
+    )
 
 
 def _launch_args(config: KayakRenderConfig) -> list[str]:
     return ["--disable-blink-features=AutomationControlled"]
+
+
+def _looks_blocked_structurally(body_text: str) -> bool:
+    if not body_text:
+        return False
+    if len(body_text) >= _MIN_RESULTS_PAGE_CHARS:
+        return False
+    lowered = body_text.lower()
+    return not any(marker.lower() in lowered for marker in _RESULT_MARKERS)
 
 
 def _derive_user_agent(default_ua: str) -> str:
@@ -142,6 +167,26 @@ def _warmup_sequence(config: KayakRenderConfig) -> list[tuple[str, float]]:
     return [(config.warmup_url, dwell)]
 
 
+# The default UA cannot change until the image is rebuilt, and reading it
+# costs a whole throwaway Chromium launch. Memoized because the driver-crash
+# ("Connection closed while reading from the driver") has fired twice, and
+# two launches per render doubles the exposure to whatever causes it (plan
+# 018 task 2.7).
+_default_user_agent_cache: str | None = None
+
+
+async def _probe_default_user_agent(playwright) -> str:
+    global _default_user_agent_cache
+    if _default_user_agent_cache is None:
+        probe = await playwright.chromium.launch(headless=True)
+        try:
+            probe_page = await probe.new_page()
+            _default_user_agent_cache = await probe_page.evaluate("navigator.userAgent")
+        finally:
+            await probe.close()
+    return _default_user_agent_cache
+
+
 async def _simulate_interaction(page) -> None:
     """PerimeterX scores mouse/scroll telemetry; a bare goto -> read emits
     none of it (plan 018 task 1.7)."""
@@ -154,6 +199,10 @@ class KayakSource:
         self.config = config or KayakRenderConfig()
         self.last_error: str | None = None
         self.last_error_level: str = "ERROR"
+        # Merged into every captured sample record; the experiment runner
+        # fills in what only it knows (attempt number, egress IP).
+        self.sample_context: dict = {}
+        self.last_sample_path = None
 
     async def search(
         self,
@@ -187,35 +236,66 @@ class KayakSource:
             return []
 
     async def _search_inner(self, url: str, top_n: int, currency: str) -> list[FlightResult]:
+        started = time.monotonic()
         body_text = await self._render(url)
 
-        if self._looks_blocked(body_text):
-            self.last_error = "Kayak render appears blocked by bot detection"
-            self.last_error_level = "WARNING"
-            return []
+        record = {
+            **self.sample_context,
+            "config_id": self.config.config_id,
+            "blocked_by_markers": self._looks_blocked(body_text),
+            "blocked_by_structure": _looks_blocked_structurally(body_text),
+            "extracted_rows": 0,
+            "validated_rows": 0,
+            "outcome": "error",
+        }
 
-        rows = await self._extract(body_text, top_n)
-        if not rows:
-            self.last_error = "Kayak extraction found no flights (route may genuinely have none)"
-            self.last_error_level = "WARNING"
-            return []
+        try:
+            if record["blocked_by_markers"] or record["blocked_by_structure"]:
+                record["outcome"] = "blocked"
+                signal = "markers" if record["blocked_by_markers"] else "page structure"
+                self.last_error = f"Kayak render appears blocked by bot detection ({signal})"
+                self.last_error_level = "WARNING"
+                return []
 
-        validated = self._validate(rows, body_text)
-        dropped = len(rows) - len(validated)
+            rows = await self._extract(body_text, top_n)
+            record["extracted_rows"] = len(rows)
+            if not rows:
+                record["outcome"] = "no_flights"
+                self.last_error = (
+                    "Kayak extraction found no flights (route may genuinely have none)"
+                )
+                self.last_error_level = "WARNING"
+                return []
 
-        if not validated:
-            self.last_error = (
-                f"Kayak validation dropped all {dropped} extracted row(s) "
-                "(grounding/price checks failed)"
-            )
-            self.last_error_level = "WARNING"
-            return []
+            validated = self._validate(rows, body_text)
+            record["validated_rows"] = len(validated)
+            dropped = len(rows) - len(validated)
 
-        if dropped:
-            self.last_error = f"Kayak validation dropped {dropped} of {len(rows)} extracted row(s)"
-            self.last_error_level = "WARNING"
+            if not validated:
+                record["outcome"] = "all_dropped"
+                self.last_error = (
+                    f"Kayak validation dropped all {dropped} extracted row(s) "
+                    "(grounding/price checks failed)"
+                )
+                self.last_error_level = "WARNING"
+                return []
 
-        return [self._map_result(row, currency, url) for row in validated]
+            if dropped:
+                record["outcome"] = "partly_dropped"
+                self.last_error = (
+                    f"Kayak validation dropped {dropped} of {len(rows)} extracted row(s)"
+                )
+                self.last_error_level = "WARNING"
+            else:
+                record["outcome"] = "extracted"
+
+            return [self._map_result(row, currency, url) for row in validated]
+        finally:
+            record["elapsed_s"] = round(time.monotonic() - started, 2)
+            if self.config.samples_dir:
+                self.last_sample_path = capture_sample(
+                    body_text, record, self.config.samples_dir
+                )
 
     @staticmethod
     def _build_url(origin: str, dest: str, depart_date: str, currency: str) -> str:
@@ -232,22 +312,17 @@ class KayakSource:
         return any(marker in lowered for marker in _BLOCKED_MARKERS)
 
     async def _render(self, url: str) -> str:
-        from playwright.async_api import async_playwright
+        from patchright.async_api import async_playwright
 
         config = self.config
         launch_args = _launch_args(config)
 
         async with async_playwright() as p:
-            # A cheap throwaway launch just to read the real default UA
-            # (Decision 4: derived from the launched browser's own version,
-            # never hardcoded). Context creation options can't be changed
-            # after the fact, so this has to happen before the real context.
-            probe = await p.chromium.launch(headless=True)
-            try:
-                probe_page = await probe.new_page()
-                default_ua = await probe_page.evaluate("navigator.userAgent")
-            finally:
-                await probe.close()
+            # The real default UA comes from the browser itself (Decision 4:
+            # derived from the launched build's own version, never
+            # hardcoded). Context creation options can't be changed after the
+            # fact, so this has to resolve before the real context.
+            default_ua = await _probe_default_user_agent(p)
 
             options = _context_options(config, default_ua)
             browser_to_close = None
