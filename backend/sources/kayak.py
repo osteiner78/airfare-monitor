@@ -2,6 +2,8 @@ import asyncio
 import json
 import logging
 import os
+import random
+from dataclasses import dataclass, field
 
 from backend.sources.base import FlightResult
 
@@ -60,9 +62,96 @@ _EXTRACTION_SYSTEM_PROMPT = (
     "genuinely present in the text -- never invent a row."
 )
 
+# The per-row action button _wait_for_results_stable polls for, and the
+# structural block signal (plan 018 task 2.5) keys off the same token. The
+# bundle pins the English kayak.com site (task 1.8), but Kayak may
+# force-redirect by IP geography and the deployment itself moves country --
+# a locale-driven lookup would be wrong in exactly those cases, so this is a
+# set matched with any(), not a lookup keyed by config.locale.
+_RESULT_MARKERS = {"Select", "Selecionar", "Auswählen"}
+
+
+@dataclass
+class KayakRenderConfig:
+    """The C1-C4 evasion bundle (plan 018) as a parameter object.
+
+    Defaults are the deployable stack: headful under Xvfb (C2, needs plan
+    018 Phase 2 infra to actually launch), a persistent profile + warm-up
+    navigation (C3), and CDP-leak patching (C4, applied via the
+    rebrowser-playwright swap in Phase 2 -- `stealth` just records intent
+    here). C5 (attaching to a manually-launched Chrome) has no unattended
+    form and is deliberately unreachable through this config.
+    """
+
+    headless: bool = False
+    user_data_dir: str | None = "data/kayak-profile"
+    # Pinned to English regardless of egress geography (task 1.8): language
+    # preference and physical location are independent facts about a real
+    # person, and re-tuning the parser on every relocation buys nothing.
+    locale: str = "en-US"
+    # Must track egress geography and be updated on relocation -- unlike
+    # locale, timezone is OS-derived and trivially cross-checked against IP
+    # geolocation, so it cannot be left to a default the way locale can.
+    timezone_id: str = "America/Sao_Paulo"
+    viewport: dict = field(default_factory=lambda: {"width": 1920, "height": 1080})
+    warmup_url: str | None = "https://www.kayak.com/"
+    warmup_dwell_s: tuple[float, float] = (2.0, 5.0)
+    stealth: bool = True
+
+
+def _launch_args(config: KayakRenderConfig) -> list[str]:
+    return ["--disable-blink-features=AutomationControlled"]
+
+
+def _derive_user_agent(default_ua: str) -> str:
+    return default_ua.replace("HeadlessChrome", "Chrome")
+
+
+def _context_options(config: KayakRenderConfig, default_ua: str) -> dict:
+    return {
+        "locale": config.locale,
+        "timezone_id": config.timezone_id,
+        "viewport": dict(config.viewport),
+        "user_agent": _derive_user_agent(default_ua),
+    }
+
+
+def _fingerprint_is_consistent(options: dict) -> bool:
+    """Catches a self-inconsistent bundle, not attribution (plan 018 Decision
+    3). Deliberately does NOT require locale/timezone region agreement --
+    the shipped config pins English locale against a local timezone (task
+    1.8), and that rule would reject its own defaults."""
+    user_agent = options.get("user_agent") or ""
+    if "headless" in user_agent.lower() or "playwright" in user_agent.lower():
+        return False
+
+    if not options.get("timezone_id"):
+        return False
+
+    viewport = options.get("viewport") or {}
+    if viewport.get("width", 0) < 800 or viewport.get("height", 0) < 600:
+        return False
+
+    return True
+
+
+def _warmup_sequence(config: KayakRenderConfig) -> list[tuple[str, float]]:
+    if not config.warmup_url:
+        return []
+    dwell = random.uniform(*config.warmup_dwell_s)
+    return [(config.warmup_url, dwell)]
+
+
+async def _simulate_interaction(page) -> None:
+    """PerimeterX scores mouse/scroll telemetry; a bare goto -> read emits
+    none of it (plan 018 task 1.7)."""
+    await page.mouse.move(200, 300)
+    await page.mouse.wheel(0, 400)
+
 
 class KayakSource:
-    def __init__(self) -> None:
+    def __init__(self, config: KayakRenderConfig | None = None) -> None:
+        self.config = config or KayakRenderConfig()
         self.last_error: str | None = None
         self.last_error_level: str = "ERROR"
 
@@ -145,15 +234,59 @@ class KayakSource:
     async def _render(self, url: str) -> str:
         from playwright.async_api import async_playwright
 
+        config = self.config
+        launch_args = _launch_args(config)
+
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            # A cheap throwaway launch just to read the real default UA
+            # (Decision 4: derived from the launched browser's own version,
+            # never hardcoded). Context creation options can't be changed
+            # after the fact, so this has to happen before the real context.
+            probe = await p.chromium.launch(headless=True)
             try:
-                page = await browser.new_page()
+                probe_page = await probe.new_page()
+                default_ua = await probe_page.evaluate("navigator.userAgent")
+            finally:
+                await probe.close()
+
+            options = _context_options(config, default_ua)
+            browser_to_close = None
+
+            if config.user_data_dir:
+                context = await p.chromium.launch_persistent_context(
+                    config.user_data_dir,
+                    headless=config.headless,
+                    args=launch_args,
+                    locale=options["locale"],
+                    timezone_id=options["timezone_id"],
+                    viewport=options["viewport"],
+                    user_agent=options["user_agent"],
+                )
+            else:
+                browser = await p.chromium.launch(headless=config.headless, args=launch_args)
+                context = await browser.new_context(
+                    locale=options["locale"],
+                    timezone_id=options["timezone_id"],
+                    viewport=options["viewport"],
+                    user_agent=options["user_agent"],
+                )
+                browser_to_close = browser
+
+            try:
+                page = context.pages[0] if context.pages else await context.new_page()
+
+                for warmup_url, dwell in _warmup_sequence(config):
+                    await page.goto(warmup_url, timeout=_RENDER_TIMEOUT_S * 1000)
+                    await asyncio.sleep(dwell)
+
                 await page.goto(url, timeout=_RENDER_TIMEOUT_S * 1000)
                 await self._wait_for_results_stable(page)
+                await _simulate_interaction(page)
                 return await page.inner_text("body")
             finally:
-                await browser.close()
+                await context.close()
+                if browser_to_close is not None:
+                    await browser_to_close.close()
 
     @staticmethod
     async def _wait_for_results_stable(page, cap_seconds: float = _RENDER_TIMEOUT_S) -> None:
@@ -162,7 +295,9 @@ class KayakSource:
         previous_count = -1
         stable_polls = 0
         while loop.time() < deadline:
-            count = await page.get_by_text("Select", exact=True).count()
+            count = 0
+            for marker in _RESULT_MARKERS:
+                count += await page.get_by_text(marker, exact=True).count()
             if count > 0 and count == previous_count:
                 stable_polls += 1
                 if stable_polls >= 2:
@@ -203,8 +338,19 @@ class KayakSource:
 
     @staticmethod
     def _price_grounded(price: float, body_text: str) -> bool:
+        # Accepts en-US comma-thousands ("4,312") and pt-BR/de-CH dot-thousands
+        # with comma decimals ("4.312" / "4.312,00") unconditionally rather
+        # than branching on locale (task 1.9) -- the fallback costs nothing
+        # and survives a force-redirect even with the English site pinned.
         n = int(price) if price == int(price) else price
-        representations = {str(n), f"{n:,}"}
+        comma_thousands = f"{n:,}"
+        dot_thousands = comma_thousands.replace(",", ".")
+        representations = {
+            str(n),
+            comma_thousands,
+            dot_thousands,
+            f"{dot_thousands},00",
+        }
         return any(rep in body_text for rep in representations)
 
     @staticmethod
