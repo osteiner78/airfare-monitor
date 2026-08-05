@@ -179,7 +179,7 @@ pre-rebuild snapshot 6200, clean `search_start` → `search_done`, no errors. Th
 
 ## Commits
 
-- `8f0bf22` — `[phase-2.1-2.7] Run Kayak headful under Xvfb behind patchright, with a sample harness`
+- `9c90720` — `[phase-2.1-2.7] Run Kayak headful under Xvfb behind patchright, with a sample harness`
 
 ## Deviations from the plan
 
