@@ -23,7 +23,7 @@ def _sample_extraction():
     ]
 
 
-def _sample_body():
+def _sample_body(currency: str = "EUR"):
     """Rendered body text that actually CONTAINS the sample extraction's price.
 
     search() grounds every extracted price against the rendered text before
@@ -32,14 +32,18 @@ def _sample_body():
     expects search() to RETURN results must render text the price appears in.
 
     Carries a header currency marker (plan 019 phase 1: search() now refuses
-    any page whose served currency doesn't match the requested one) matching
-    "EUR", the currency every test below requests except the one exercising
-    a different currency explicitly.
+    any page whose served currency doesn't match the requested one), defaulting
+    to "EUR" -- the currency every test below requests unless it passes
+    `currency=` to render a page served in something else.
     """
+    header, sym = {
+        "EUR": ("English\n€\nEuro\nFeedback\n", "€"),
+        "USD": ("English\n$\nUnited States dollar\nFeedback\n", "$"),
+    }[currency]
     return (
-        "English\n€\nEuro\nFeedback\n"
-        "Cheapest\n€785\n26h 25m\nTAP AIR PORTUGAL\n1 stop\nGRU-ZRH\nSelect\n"
-        "Best\n€1,204\n18h 10m\nSWISS\n1 stop\nGRU-ZRH\nSelect\n"
+        header
+        + f"Cheapest\n{sym}785\n26h 25m\nTAP AIR PORTUGAL\n1 stop\nGRU-ZRH\nSelect\n"
+        + f"Best\n{sym}1,204\n18h 10m\nSWISS\n1 stop\nGRU-ZRH\nSelect\n"
     )
 
 
@@ -163,10 +167,14 @@ async def test_search_result_currency_matches_requested_currency():
     from backend.sources.kayak import KayakSource
 
     source = KayakSource()
-    with patch.object(source, "_render", AsyncMock(return_value=_sample_body())), \
+    with patch.object(source, "_render", AsyncMock(return_value=_sample_body(currency="USD"))), \
          patch.object(source, "_extract", AsyncMock(return_value=_sample_extraction())):
         results = await source.search("GRU", "ZRH", "2026-08-21", None, "USD", 5)
 
+    # Guard against the vacuous pass: once search() refuses on a currency
+    # mismatch, an EUR-served body would make `all(...)` true over an empty
+    # list and this test would assert nothing at all.
+    assert results
     assert all(r.currency == "USD" for r in results)
 
 
