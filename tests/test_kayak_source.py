@@ -439,6 +439,95 @@ async def test_error_message_does_not_contain_api_key(monkeypatch):
     assert secret not in source.last_error
 
 
+# --- results-section trimming (plan 018 Phase 3 discovery, not an
+# orchestrator test): extracting against the full ~20k-char body measured
+# 103s, more than triple _LLM_TIMEOUT_S. ---
+
+def _body_with_results(n_results: int, marker: str = "Select") -> str:
+    head = "Filter flights\nStops\n$100\nAirlines\nSelect all\n"
+    blocks = "".join(
+        f"Go to result details\n0{i}:30 am - 0{i}:40 pm\nGOL\n1 stop\n"
+        f"${500 + i}\nEconomy\n{marker}\n"
+        for i in range(1, n_results + 1)
+    )
+    return head + blocks + "\nFooter\nAbout\nPrivacy\n"
+
+
+def _marker_lines(text: str, marker: str = "Select") -> int:
+    """Counts itineraries, not substrings -- the real page's airline filter
+    carries a "Select all" label that is not a result boundary."""
+    return sum(1 for line in text.split("\n") if line.strip() == marker)
+
+
+def test_results_section_keeps_only_the_requested_number_of_itineraries():
+    from backend.sources.kayak import _results_section
+
+    trimmed = _results_section(_body_with_results(20), 5)
+
+    assert _marker_lines(trimmed) == 5
+    assert "$505" in trimmed  # the 5th itinerary is kept
+    assert "$506" not in trimmed  # the 6th is not
+
+
+def test_results_section_keeps_the_first_itinerary_intact():
+    """The cheapest row is the one that matters most (sort=price_a), and its
+    block start is the only boundary that has to be estimated."""
+    from backend.sources.kayak import _results_section
+
+    trimmed = _results_section(_body_with_results(20), 5)
+
+    assert "$501" in trimmed
+    assert "GOL" in trimmed
+
+
+def test_results_section_drops_page_chrome_around_the_results():
+    from backend.sources.kayak import _results_section
+
+    trimmed = _results_section(_body_with_results(20), 5)
+
+    assert "Privacy" not in trimmed
+    assert "Filter flights" not in trimmed
+    assert len(trimmed) < len(_body_with_results(20))
+
+
+def test_results_section_recognises_localized_action_buttons():
+    """Same reason _RESULT_MARKERS is a set (task 1.10): a force-redirect must
+    not turn trimming into a page-destroying no-op or an over-trim."""
+    from backend.sources.kayak import _results_section
+
+    trimmed = _results_section(_body_with_results(20, marker="Selecionar"), 5)
+
+    assert _marker_lines(trimmed, "Selecionar") == 5
+    assert "$505" in trimmed
+    assert "$506" not in trimmed
+
+
+def test_results_section_returns_body_unchanged_when_no_markers_found():
+    """Trimming is an optimisation; a redesign that removes the marker must
+    degrade to sending the whole page, never to sending nothing."""
+    from backend.sources.kayak import _results_section
+
+    body = "a page with no recognised action button at all\n" * 20
+    assert _results_section(body, 5) == body
+
+
+def test_results_section_returns_body_unchanged_for_non_positive_top_n():
+    from backend.sources.kayak import _results_section
+
+    body = _body_with_results(20)
+    assert _results_section(body, 0) == body
+
+
+def test_results_section_handles_fewer_results_than_requested():
+    from backend.sources.kayak import _results_section
+
+    trimmed = _results_section(_body_with_results(2), 5)
+
+    assert _marker_lines(trimmed) == 2
+    assert "$501" in trimmed
+    assert "$502" in trimmed
+
+
 # --- live search (requires network + Chromium + a real API key) ---
 
 @pytest.mark.slow

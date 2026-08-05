@@ -71,6 +71,7 @@ _EXTRACTION_SYSTEM_PROMPT = (
 # a locale-driven lookup would be wrong in exactly those cases, so this is a
 # set matched with any(), not a lookup keyed by config.locale.
 _RESULT_MARKERS = {"Select", "Selecionar", "Auswählen"}
+_RESULT_MARKERS_LOWER = {marker.lower() for marker in _RESULT_MARKERS}
 
 # A real results page is long and carries one action button per itinerary; the
 # interstitial is a couple of short paragraphs with none. Complements
@@ -134,6 +135,39 @@ def _looks_blocked_structurally(body_text: str) -> bool:
         return False
     lowered = body_text.lower()
     return not any(marker.lower() in lowered for marker in _RESULT_MARKERS)
+
+
+def _results_section(body_text: str, max_results: int) -> str:
+    """The slice of the rendered body carrying the first `max_results`
+    itineraries.
+
+    The page is fetched with sort=price_a, so the cheapest itineraries come
+    first and the LLM never needs the rest. Sending the whole ~20k-char body
+    measured 103s against the extraction endpoint (2026-08-05) -- more than
+    triple _LLM_TIMEOUT_S -- while the top-5 slice is ~9% of it.
+
+    Each itinerary block ends with a _RESULT_MARKERS line, so block *ends* are
+    exact; only the first block's start has to be estimated, and the widest of
+    the leading blocks is a safe over-estimate. Keyed on the marker set rather
+    than a layout string, so it survives a force-redirect the same way
+    _wait_for_results_stable does. Returns the body unchanged when there is
+    nothing to key on -- trimming is an optimisation, and dropping the page
+    would cost a real request.
+    """
+    if max_results <= 0:
+        return body_text
+
+    lines = body_text.split("\n")
+    marker_lines = [
+        i for i, line in enumerate(lines) if line.strip().lower() in _RESULT_MARKERS_LOWER
+    ]
+    if not marker_lines:
+        return body_text
+
+    end = marker_lines[min(max_results, len(marker_lines)) - 1]
+    spans = [b - a for a, b in zip(marker_lines, marker_lines[1:])]
+    lookback = max(spans[:max_results], default=end)
+    return "\n".join(lines[max(0, marker_lines[0] - lookback) : end + 1])
 
 
 def _derive_user_agent(default_ua: str) -> str:
@@ -231,7 +265,7 @@ class KayakSource:
 
         try:
             return await asyncio.wait_for(
-                self._search_inner(url, top_n, currency),
+                self._search_inner(url, top_n, currency, depart_date),
                 timeout=_OVERALL_TIMEOUT_S,
             )
         except Exception as e:
@@ -243,7 +277,9 @@ class KayakSource:
             self.last_error_level = "ERROR"
             return []
 
-    async def _search_inner(self, url: str, top_n: int, currency: str) -> list[FlightResult]:
+    async def _search_inner(
+        self, url: str, top_n: int, currency: str, depart_date: str
+    ) -> list[FlightResult]:
         started = time.monotonic()
         body_text = await self._render(url)
 
@@ -265,7 +301,7 @@ class KayakSource:
                 self.last_error_level = "WARNING"
                 return []
 
-            rows = await self._extract(body_text, top_n)
+            rows = await self._extract(body_text, top_n, depart_date)
             record["extracted_rows"] = len(rows)
             if not rows:
                 record["outcome"] = "no_flights"
@@ -390,7 +426,7 @@ class KayakSource:
             previous_count = count
             await asyncio.sleep(1)
 
-    async def _extract(self, body_text: str, top_n: int) -> list[dict]:
+    async def _extract(self, body_text: str, top_n: int, depart_date: str) -> list[dict]:
         from openai import AsyncOpenAI
 
         api_key = os.environ[_API_KEY_ENV]
@@ -403,8 +439,16 @@ class KayakSource:
                     {"role": "system", "content": _EXTRACTION_SYSTEM_PROMPT},
                     {
                         "role": "user",
-                        "content": f"Extract up to {top_n} flights from this Kayak "
-                        f"results page text:\n\n{body_text}",
+                        # The trimmed slice carries clock times but not the
+                        # search date, so the date is stated rather than left
+                        # to be inferred -- without it the model dates every
+                        # row to the epoch.
+                        "content": f"These flights depart on {depart_date}. Use that "
+                        "date for departure_time, and for arrival_time unless the "
+                        "itinerary arrives after midnight, which the page marks "
+                        '"+1".\n\n'
+                        f"Extract up to {top_n} flights from this Kayak "
+                        f"results page text:\n\n{_results_section(body_text, top_n)}",
                     },
                 ],
                 response_format={"type": "json_object"},
