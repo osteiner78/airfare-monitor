@@ -44,6 +44,20 @@ async def test_launch_args_disable_automation_controlled_blink_feature():
     assert any("disable-blink-features=AutomationControlled" in a for a in args)
 
 
+async def test_launch_args_expose_a_webgl_context():
+    """Found by the Phase 3 Step 1 smoke test, 2026-08-05: the bundle rendered
+    with NO WebGL context at all -- sannysoft "Canvas has no webgl context",
+    creepjs reporting params/exts/gpu blocked. That is a *harder* automation
+    tell than the SwiftShader renderer string this plan ranked #3, because
+    every real Chrome has a context and falls back to SwiftShader on a
+    GPU-less machine rather than exposing none. Probed fix restores 36
+    extensions and an ANGLE/SwiftShader vendor string."""
+    from backend.sources.kayak import KayakRenderConfig, _launch_args
+    args = _launch_args(KayakRenderConfig())
+    assert any("use-gl=angle" in a for a in args)
+    assert any("use-angle=swiftshader" in a for a in args)
+
+
 async def test_launch_args_do_not_enable_automation():
     """--enable-automation sets navigator.webdriver and advertises the session
     as automated -- the single cheapest signal to hand a detector."""

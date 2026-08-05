@@ -72,9 +72,10 @@ TLS/JA3 is a non-issue: real Chromium presents a genuine TLS fingerprint.
    English regardless of egress** — see task 1.8. Language preference and
    physical location are independent facts about a real person, so requiring
    them to agree would buy nothing and would cost a stable parsing surface.
-5. **NordVPN is an experiment-phase tool only**, per the user's constraint.
-   Production runs on the residential IP. See Phase 3 Step 0 — the VPN must
-   itself be validated before being trusted as a test bed.
+5. ~~NordVPN is an experiment-phase tool~~ — **dropped 2026-08-05.** The
+   user has a subscription but no client is installed on `minnie`, and
+   installing one is out of scope. The experiment runs on the residential
+   IP, which is also the production egress. See Phase 3 Step 0.
 6. **Experiments never touch tracker 20.** A throwaway route/date, so
    experiments cannot pollute the tracked route's price history or its
    reputation.
@@ -355,17 +356,51 @@ Paste into `.agent/reports/018-phase-2.md`.
 Answer one question: **does the C1–C4 bundle get through?** No attribution,
 no per-rung analysis unless the bundle fails.
 
-### Step 0 — validate the test bed (before anything else)
-Browse Kayak **manually through NordVPN**. NordVPN exits are datacenter IPs
-and many are pre-flagged. If manual browsing through the VPN is blocked, the
-VPN is unusable here — every arm would fail for the wrong reason, and the
-experiment runs on the residential IP instead, accepting the reputation risk.
+### Step 0 — ~~validate the VPN test bed~~ — **dropped 2026-08-05**
+The user has a NordVPN *subscription*, but no VPN client is installed on
+`minnie` and none was implied. Installing one is a change outside
+`/srv/airfare-monitor` and needs their hands for the manual browse, so this
+step cannot run as written.
 
-### Step 1 — offline fingerprint smoke test (zero Kayak requests)
+**The experiment runs on the residential IP** — the plan's own stated
+fallback, and on reflection the better arm regardless:
+- It is also the **production** egress, so Steps 2 and 4 collapse into one.
+  A pass needs no separate re-validation on a different IP.
+- NordVPN exits are datacenter IPs and often pre-flagged, so a failed arm
+  through the VPN could be the VPN rather than the config — the confounder
+  this step existed to bound would have been *introduced* by using it.
+- The reputation cost is small and bounded: 10 requests over ~100 minutes,
+  from an IP that already sustains heavy manual browsing without a block.
+
+Accepted risk: if the bundle is still detected, those are 10 bot-flagged
+events on the residential IP. Small against the manual-browsing volume that
+IP already carries, but it is the reason not to re-run the experiment
+casually.
+
+### Step 1 — offline fingerprint smoke test (zero Kayak requests) — **DONE 2026-08-05**
+Result: clean on `navigator.webdriver` (false), all sannysoft tests,
+`outerWidth` 1928 (headless reports 0), 5 plugins, timezone
+`America/Sao_Paulo`, locale `en-US`, creepjs 0% headless / 0% stealth, and
+`_fingerprint_is_consistent` agreeing. WebRTC confirmed egress
+`177.145.72.252` — the residential IP.
+
+**One self-own found and fixed before any live attempt** (task 3.1 below) —
+which is exactly what this step exists for.
 Point the configured browser at `bot.sannysoft.com` and
 `abrahamjuliot.github.io/creepjs`; capture results. Confirm no
 "Headless"/webdriver flags and that `_fingerprint_is_consistent` agrees.
 **Fix any self-own here before spending a single live attempt.**
+
+3.1 **Expose a WebGL context.** The bundle rendered with *no* WebGL context
+    at all — sannysoft "Canvas has no webgl context", creepjs reporting
+    params/exts/gpu blocked. That is a **harder** automation tell than the
+    SwiftShader renderer string this plan ranked #3: every real Chrome has a
+    context, falling back to SwiftShader on a GPU-less machine rather than
+    exposing none. Add `--use-gl=angle --use-angle=swiftshader` to
+    `_launch_args`; probed to restore 36 extensions and an
+    `ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device...))` vendor string,
+    and it violates neither existing `_launch_args` test. Pinned by
+    `test_launch_args_expose_a_webgl_context`.
 
 Also confirm here, cheaply, that **`kayak.com` does not force-redirect to a
 local domain** from the egress IP in use. If it does, task 1.10's marker set
@@ -403,7 +438,7 @@ the sample and double the request rate from that IP. Either pause tracker 20
 `kayak_next_due_at` falls outside the window before starting.
 
 **Read the result as:**
-- **0–1 blocks / 10** → success. Go to Step 4.
+- **0–1 blocks / 10** → success. Go to Step 5 (Step 4 is merged in).
 - **2–7 / 10** → partial. Usable with retries; consider whether a retry on
   block (respecting a cap) is worth adding before trimming anything.
 - **8–10 / 10** → failed. Go to Step 3.
@@ -421,13 +456,12 @@ diagnostic only and cannot ship** (Decision 2).
   evasion and reconsider the approach entirely (different surface, a paid
   flight-data API, or dropping Kayak).
 
-### Step 4 — validate on the production IP
-Winning config, VPN off, residential IP, 5–10 attempts at production-ish
-spacing, still on the throwaway route. Confirms the result survives the
-change of egress.
+### Step 4 — ~~validate on the production IP~~ — **merged into Step 2**
+Step 2 now runs on the residential IP, which *is* the production egress, so
+there is no change of egress left to validate. Skip straight to Step 5.
 
 ### Step 5 — promote
-Only after Step 4: enable on tracker 20, revisit plan 017's tasks 6.3/6.4
+Only after Step 2 passes: re-enable Kayak on tracker 20, revisit plan 017's tasks 6.3/6.4
 (which were confounded by the unrelated `fast_flights` TypeError), and
 finally close 017's Phase 6 with a real success sample and the 6.6 hand
 spot-check against kayak.com.
@@ -451,8 +485,9 @@ config, blocked verdict, body length, outcome.
 - **The bundle is stateful.** A persistent profile means attempt N+1 is not
   independent of attempt N. Reset the profile dir between distinct arms, and
   note that a warm profile is part of what's being tested.
-- **NordVPN egress is itself a variable.** Step 0 exists to bound this; a
-  Step 2 pass through VPN still needs Step 4 to confirm on the real IP.
+- ~~NordVPN egress is itself a variable~~ — moot: the experiment runs on
+  the residential/production IP, so there is no egress difference between
+  the measurement and the deployment.
 - ~~The `fast_flights` TypeError~~ — **fixed 2026-08-05** before this plan
   starts (`_to_iso` degrades to `""` on a `None` date/hour component instead
   of raising out of the whole fetch). It confounded 017's 6.3/6.4 by making
