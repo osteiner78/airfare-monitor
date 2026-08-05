@@ -22,8 +22,23 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from backend.fingerprint import make_flight_key  # noqa: E402
 from backend.kayak_samples import _DEFAULT_SAMPLES_DIR  # noqa: E402
 from backend.sources.kayak import KayakRenderConfig, KayakSource  # noqa: E402
+
+# Fields the source records on the sidecar but does not expose on itself.
+# Copied into the JSONL so the run is analysable from one file -- joining
+# sidecars back in after the fact silently omits any attempt whose capture
+# failed (plan 018 attempt 7).
+_SIDECAR_FIELDS = (
+    "blocked_by_markers",
+    "blocked_by_structure",
+    "extracted_rows",
+    "validated_rows",
+    "outcome",
+    "body_len",
+    "select_count",
+)
 
 
 def _egress_ip() -> str:
@@ -36,6 +51,16 @@ def _egress_ip() -> str:
         return f"unknown ({type(e).__name__})"
 
 
+def _sidecar_fields(sample_path) -> dict:
+    if not sample_path:
+        return {}
+    try:
+        sidecar = json.loads(Path(sample_path).with_suffix(".json").read_text())
+    except Exception:
+        return {}
+    return {k: sidecar[k] for k in _SIDECAR_FIELDS if k in sidecar}
+
+
 async def _attempt(n: int, args, samples_dir: str) -> dict:
     config = KayakRenderConfig(config_id=args.config_id, samples_dir=samples_dir)
     source = KayakSource(config=config)
@@ -45,17 +70,21 @@ async def _attempt(n: int, args, samples_dir: str) -> dict:
     results = await source.search(args.origin, args.dest, args.date, None, args.currency, args.top_n)
     elapsed = (datetime.now(timezone.utc) - started).total_seconds()
 
-    return {
+    record = {
         "attempt_n": n,
         "iso_timestamp": started.isoformat(),
         "egress_ip": source.sample_context["egress_ip"],
         "config_id": args.config_id,
         "returned_rows": len(results),
+        "flight_keys": [make_flight_key(r) for r in results],
+        "prices": [r.price for r in results],
         "last_error": source.last_error,
         "last_error_level": source.last_error_level,
         "sample_path": str(source.last_sample_path) if source.last_sample_path else None,
         "elapsed_s": round(elapsed, 2),
     }
+    record.update(_sidecar_fields(source.last_sample_path))
+    return record
 
 
 async def main() -> None:
