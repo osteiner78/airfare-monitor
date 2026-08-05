@@ -246,8 +246,34 @@ Point the configured browser at `bot.sannysoft.com` and
 **Fix any self-own here before spending a single live attempt.**
 
 ### Step 2 — the bundle against Kayak
-~10 attempts, ~10 min spacing, throwaway route/date, via NordVPN if Step 0
-passed. Record every attempt through the Phase 2 harness.
+
+**Route:** a throwaway that is *not* tracked by any tracker — e.g.
+`GRU→LIS`, departing ~60 days out. Never `GRU→ZRH` or `GRU→GVA`
+(trackers 20/21/27). Use the same route for every attempt so route
+popularity isn't a hidden variable, and keep the same date rather than
+rolling it.
+
+**Volume and spacing:** 10 attempts, ~10 min apart, ≈100 min total. Spacing
+is justified by the manual-browsing evidence that rate is not the trigger
+(Context); it is not a claim that rate never matters.
+
+**Per-attempt record** (one JSON line, written by the Phase 2 harness):
+```
+attempt_n, iso_timestamp, egress_ip, config_id, blocked_by_markers,
+blocked_by_structure, body_len, select_count, extracted_rows,
+validated_rows, outcome, sample_path, elapsed_s
+```
+`egress_ip` matters: if NordVPN drops mid-run the arm silently changes
+meaning, and this is the only way to notice after the fact.
+
+**Run it detached** — ~100 min exceeds any sane foreground wait — and let it
+write incrementally so a crash doesn't lose collected samples.
+
+**Do not touch tracker 20 during the run.** Its scheduled job also calls
+Kayak; a natural-cadence attempt landing mid-experiment would both pollute
+the sample and double the request rate from that IP. Either pause tracker 20
+(`kayak_enabled=0`) for the duration and re-enable after, or confirm its
+`kayak_next_due_at` falls outside the window before starting.
 
 **Read the result as:**
 - **0–1 blocks / 10** → success. Go to Step 4.
@@ -300,9 +326,12 @@ config, blocked verdict, body length, outcome.
   note that a warm profile is part of what's being tested.
 - **NordVPN egress is itself a variable.** Step 0 exists to bound this; a
   Step 2 pass through VPN still needs Step 4 to confirm on the real IP.
-- **The `fast_flights` TypeError** (61 occurrences since 2026-08-03,
-  pre-existing, unrelated) confounded 017's 6.3/6.4 and will confound Step 5
-  the same way. Worth fixing first as its own small task.
+- ~~The `fast_flights` TypeError~~ — **fixed 2026-08-05** before this plan
+  starts (`_to_iso` degrades to `""` on a `None` date/hour component instead
+  of raising out of the whole fetch). It confounded 017's 6.3/6.4 by making
+  both observed Kayak cycles produce genuinely empty snapshots; Step 5
+  should now be able to observe Kayak failing *while* the main sources
+  succeed, which is the scenario 6.4 needs.
 - **n=10 resolution**, as above.
 
 ## Handoff notes

@@ -139,3 +139,78 @@ async def test_real_fast_flights_search_returns_flight_results_for_valid_route()
     if results:
         assert all(isinstance(r, FlightResult) for r in results)
         assert all(r.price > 0 for r in results)
+
+
+# --- _to_iso: incomplete timestamps from Google's payload ---
+# Observed in production 61 times between 2026-08-03 20:14:55 and
+# 2026-08-04 23:00:31 across 4 trackers:
+#   "fast_flights: TypeError: unsupported format string passed to
+#    NoneType.__format__"
+# _to_iso is the only place in this module applying a format spec ({:04d} /
+# {:02d}), and Google intermittently returns a None component in a leg's
+# date/time. The result was fatal to the WHOLE fetch, not just the bad leg:
+# _map_result runs inside a list comprehension in _fetch, so one malformed
+# timestamp made fast_flights return zero results and log an ERROR. Not
+# reproducible on demand -- it depends on what Google serves -- so these
+# drive the fix from the proven failure mode instead.
+
+class _FakeDateTime:
+    def __init__(self, date, time):
+        self.date = date
+        self.time = time
+
+
+async def test_to_iso_formats_a_complete_timestamp():
+    """NON-REGRESSION: the normal path must be untouched."""
+    from backend.sources.fast_flights import FastFlightsSource
+    dt = _FakeDateTime(date=(2026, 8, 21), time=(14, 35))
+    assert FastFlightsSource._to_iso(dt) == "2026-08-21T14:35:00"
+
+
+async def test_to_iso_treats_omitted_minute_as_zero():
+    """NON-REGRESSION: Google omits the minute entirely when it is :00."""
+    from backend.sources.fast_flights import FastFlightsSource
+    dt = _FakeDateTime(date=(2026, 8, 21), time=(14,))
+    assert FastFlightsSource._to_iso(dt) == "2026-08-21T14:00:00"
+
+
+async def test_to_iso_treats_explicit_none_minute_as_zero():
+    from backend.sources.fast_flights import FastFlightsSource
+    dt = _FakeDateTime(date=(2026, 8, 21), time=(14, None))
+    assert FastFlightsSource._to_iso(dt) == "2026-08-21T14:00:00"
+
+
+async def test_to_iso_returns_empty_string_when_hour_is_none():
+    """No fabricated midnight: departure_time feeds flight_key, so inventing
+    00:00 would forge an identity. An empty string degrades cleanly -- the
+    key stays airline+flight_number, and _split_timestamps already tolerates
+    a missing timestamp."""
+    from backend.sources.fast_flights import FastFlightsSource
+    dt = _FakeDateTime(date=(2026, 8, 21), time=(None, 35))
+    assert FastFlightsSource._to_iso(dt) == ""
+
+
+async def test_to_iso_returns_empty_string_when_a_date_component_is_none():
+    from backend.sources.fast_flights import FastFlightsSource
+    for date in ((None, 8, 21), (2026, None, 21), (2026, 8, None)):
+        dt = _FakeDateTime(date=date, time=(14, 35))
+        assert FastFlightsSource._to_iso(dt) == ""
+
+
+async def test_to_iso_returns_empty_string_when_time_is_absent_entirely():
+    from backend.sources.fast_flights import FastFlightsSource
+    dt = _FakeDateTime(date=(2026, 8, 21), time=())
+    assert FastFlightsSource._to_iso(dt) == ""
+
+
+async def test_to_iso_never_raises_for_any_none_shaped_input():
+    """The contract that matters: one malformed leg must not be able to take
+    down the entire fetch."""
+    from backend.sources.fast_flights import FastFlightsSource
+    shapes = [
+        ((None, None, None), (None, None)),
+        ((2026, 8, 21), (None,)),
+        ((None, 8, 21), ()),
+    ]
+    for date, time in shapes:
+        assert isinstance(FastFlightsSource._to_iso(_FakeDateTime(date, time)), str)

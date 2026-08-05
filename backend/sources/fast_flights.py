@@ -154,6 +154,20 @@ class FastFlightsSource:
     def _to_iso(dt) -> str:
         y, m, d = dt.date
         # Google omits the minute when it's ":00" (e.g. time=[14] not [14, 0])
-        h = dt.time[0]
+        h = dt.time[0] if dt.time else None
         mi = dt.time[1] if len(dt.time) > 1 else 0
+
+        # Google intermittently returns a None component here, which used to
+        # raise out of _map_result and kill the WHOLE fetch (the comprehension
+        # in _fetch), not just the offending leg -- 61 zero-result ERRORs in
+        # production over ~27h. Minute is safe to default (Google already omits
+        # it when :00); hour or date is not -- departure_time feeds flight_key,
+        # so a fabricated midnight would forge a flight identity. Degrade to ""
+        # instead: the key falls back to airline+flight_number and
+        # _split_timestamps already tolerates a missing timestamp.
+        if mi is None:
+            mi = 0
+        if any(part is None for part in (y, m, d, h)):
+            return ""
+
         return f"{y:04d}-{m:02d}-{d:02d}T{h:02d}:{mi:02d}:00"
