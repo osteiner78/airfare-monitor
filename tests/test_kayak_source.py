@@ -528,6 +528,63 @@ def test_results_section_handles_fewer_results_than_requested():
     assert "$502" in trimmed
 
 
+# --- extraction request shape (plan 018 Phase 3 discovery, not an
+# orchestrator test) ---
+
+def _fake_openai_client(captured: dict):
+    """Stands in for AsyncOpenAI, recording the kwargs _extract sends."""
+    class _Message:
+        content = '{"flights": []}'
+
+    class _Choice:
+        message = _Message()
+
+    class _Response:
+        choices = [_Choice()]
+
+    async def create(**kwargs):
+        captured.update(kwargs)
+        return _Response()
+
+    class _Client:
+        def __init__(self, *a, **kw):
+            self.chat = type("C", (), {"completions": type("X", (), {"create": staticmethod(create)})()})()
+
+    return _Client
+
+
+async def test_extract_disables_model_thinking(monkeypatch):
+    """Thinking defaults to "high" effort and cost 2677-4311 reasoning tokens
+    for ~300 tokens of JSON -- 23.7-49.4s against a 30s _LLM_TIMEOUT_S, i.e.
+    a coin-flip timeout. Disabled it measures 3.5-4.7s with identical output.
+    Pinned because dropping this silently reverts Kayak to failing."""
+    import openai
+    from backend.sources.kayak import KayakSource
+
+    captured: dict = {}
+    monkeypatch.setattr(openai, "AsyncOpenAI", _fake_openai_client(captured))
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+
+    await KayakSource()._extract(_sample_body(), 5, "2026-08-21")
+
+    assert captured["extra_body"]["thinking"]["type"] == "disabled"
+
+
+async def test_extract_states_the_departure_date_in_the_prompt(monkeypatch):
+    """The trimmed slice carries clock times but no date, so an inferred date
+    landed every row on 1970-01-01."""
+    import openai
+    from backend.sources.kayak import KayakSource
+
+    captured: dict = {}
+    monkeypatch.setattr(openai, "AsyncOpenAI", _fake_openai_client(captured))
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+
+    await KayakSource()._extract(_sample_body(), 5, "2026-08-21")
+
+    assert "2026-08-21" in captured["messages"][-1]["content"]
+
+
 # --- live search (requires network + Chromium + a real API key) ---
 
 @pytest.mark.slow

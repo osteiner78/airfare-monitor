@@ -452,6 +452,14 @@ class KayakSource:
                     },
                 ],
                 response_format={"type": "json_object"},
+                # DeepSeek thinks by default at "high" effort, which cost
+                # 2677-4311 reasoning tokens to emit ~300 tokens of JSON --
+                # 23.7-49.4s against a 30s budget. Disabled it measures
+                # 3.5-4.7s on 439-453 tokens with byte-identical output:
+                # reading fields out of already-structured text is not a
+                # reasoning task. Passed through opencode's Zen proxy
+                # (verified 2026-08-05).
+                extra_body={"thinking": {"type": "disabled"}},
             ),
             timeout=_LLM_TIMEOUT_S,
         )
