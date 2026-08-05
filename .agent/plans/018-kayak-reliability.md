@@ -60,14 +60,18 @@ TLS/JA3 is a non-issue: real Chromium presents a genuine TLS fingerprint.
    works. Run it only if C1–C4 fails, to answer "is this reachable at all?"
    before investing further.
 3. **Keep the offline fingerprint smoke test.** Not for attribution — to
-   catch a *self-inconsistent* bundle. A hardcoded UA that doesn't match the
-   real Chromium build, or `pt-BR` against a UTC timezone, is more
-   suspicious than no override. Costs zero Kayak requests.
-4. **Derive the fingerprint, don't hardcode it.** The user agent must come
-   from the actual launched browser build, and locale/timezone/geolocation
-   must be mutually consistent and consistent with the egress IP's
-   geography (Brazil). A hardcoded UA silently rots on the next Playwright
-   image rebuild and becomes a *signal* rather than a disguise.
+   catch a *self-inconsistent* bundle. A UA still advertising `HeadlessChrome`,
+   or a 0x0 viewport, is more suspicious than no override at all. Costs zero
+   Kayak requests.
+4. **Derive the fingerprint, don't hardcode it — and pin the English site.**
+   The user agent must come from the actual launched browser build (a
+   hardcoded UA silently rots on the next image rebuild and becomes a
+   *signal* rather than a disguise). **`timezone_id`** must match the egress
+   IP's geography, since it is OS-derived and trivially cross-checked; it is
+   the one field to update on relocation. **Locale is deliberately pinned to
+   English regardless of egress** — see task 1.8. Language preference and
+   physical location are independent facts about a real person, so requiring
+   them to agree would buy nothing and would cost a stable parsing surface.
 5. **NordVPN is an experiment-phase tool only**, per the user's constraint.
    Production runs on the residential IP. See Phase 3 Step 0 — the VPN must
    itself be validated before being trusted as a test bed.
@@ -93,7 +97,8 @@ unit-testable with no browser. Out of scope: any live Kayak request.
     `headless: bool`, `user_data_dir: str | None`, `locale: str`,
     `timezone_id: str`, `viewport: dict`, `warmup_url: str | None`,
     `warmup_dwell_s: tuple[float, float]`, `stealth: bool`. Defaults = the
-    C1–C4 bundle. `KayakSource.__init__` takes an optional config so tests
+    C1–C4 bundle, with `locale` English and `warmup_url` on `kayak.com`
+    (1.8). `KayakSource.__init__` takes an optional config so tests
     and experiments can vary it.
 1.2 `_launch_args(config) -> list[str]` (pure): includes
     `--disable-blink-features=AutomationControlled`. **Must not** include
@@ -105,9 +110,10 @@ unit-testable with no browser. Out of scope: any live Kayak request.
     token rewritten to `Chrome` — never hardcoded (Decision 4).
 1.4 `_fingerprint_is_consistent(options) -> bool` (pure): asserts the
     invariants the smoke test exists to protect — UA contains no
-    "Headless"/"Playwright" token, timezone and locale agree on region,
-    viewport is a plausible desktop size. Used by a unit test and by the
-    Phase 3 smoke step.
+    "Headless"/"Playwright" token, `timezone_id` is actually set, viewport is
+    a plausible desktop size. It must **not** require locale and timezone to
+    agree on region (see 1.8) — that rule would reject the shipped
+    configuration. Used by a unit test and by the Phase 3 smoke step.
 1.5 `_render` uses `launch_persistent_context(user_data_dir=...)` when
     `user_data_dir` is set (C3), else `launch()` + `new_context()`. Profile
     dir defaults under `data/` and **must be gitignored**.
@@ -118,25 +124,42 @@ unit-testable with no browser. Out of scope: any live Kayak request.
 1.7 Behavioural noise (C4-adjacent): a small scroll and mouse move before
     reading the DOM. Keep as a separate `_simulate_interaction(page)` so it
     can be mocked out.
-1.8 **Locale-aware price grounding** — surfaced while writing the tests.
-    `_price_grounded` builds `{str(n), f"{n:,}"}`, i.e. `"4312"` and
-    `"4,312"`. On `kayak.com.br` a four-digit fare renders `R$ 4.312` — dot
-    for thousands, comma for decimals, the inverse of en-US — so **every
-    expensive itinerary would be dropped as hallucinated**. That failure is
-    silent and indistinguishable from a clean empty extraction, which is
-    precisely the class of bug the grounding check was added to prevent.
-    Add dot-thousands and comma-decimal renderings.
-1.9 **Locale-aware result marker** — same origin, larger blast radius.
+1.8 **Pin the English site; let timezone track geography.** The parsing
+    surface stays `kayak.com` in English **for the life of the project**,
+    independent of where the deployment sits — one page language, one price
+    format, one set of button labels, no re-tuning when the host moves from
+    Brazil to Switzerland.
+    This does not weaken the fingerprint. Language preference and physical
+    location are independent facts about a real person: an English-preferring
+    resident of Brazil (or Switzerland) is entirely ordinary. What *is*
+    cross-checkable against IP geolocation is **timezone**, which is
+    OS-derived — so `timezone_id` must be set deliberately to match the
+    egress geography and updated on relocation. It cannot be auto-derived
+    from the container, which reports **UTC** (verified 2026-08-05); falling
+    through to UTC would itself be a mismatch against any residential egress.
+    Consequently `_fingerprint_is_consistent` must **not** require locale and
+    timezone to agree on region — that rule would reject the shipped
+    configuration. It checks: no Headless/Playwright token in the UA, a
+    plausible desktop viewport, and a timezone that is actually set.
+1.9 **Price grounding accepts both separator conventions, unconditionally.**
+    `_price_grounded` builds `{str(n), f"{n:,}"}` — `"4312"` and `"4,312"`.
+    A four-digit fare on a non-English page renders `R$ 4.312` (dot
+    thousands) or `4.312,00` (comma decimals), matching neither, so **every
+    expensive itinerary would be dropped as hallucinated** — silent, and
+    indistinguishable from a clean empty extraction. Even with the English
+    site pinned, accept all three renderings rather than branching on locale:
+    the fallback costs nothing and survives a redirect.
+1.10 **Result-button markers are a set, not a locale lookup.**
     `_wait_for_results_stable` polls `page.get_by_text("Select", exact=True)`
-    and task 2.5's structural signal keys off the same token. On
-    `kayak.com.br` that button reads **"Selecionar"**, so a hardcoded
-    `"Select"` would (a) poll zero forever, burning the full 45s render cap
-    on every single attempt, and (b) make the structural signal classify
-    every real results page as blocked. Add `_result_marker(config)` driven
-    by `config.locale`, and use it in both places.
-    **This coupling is why 1.8/1.9 must land with the locale change, not
-    after it** — otherwise the first live arm measures a broken harness
-    rather than the evasion bundle.
+    and task 2.5's structural signal keys off the same token. If Kayak
+    force-redirects by IP geography, that button becomes "Selecionar" or
+    "Auswählen", and a hardcoded `"Select"` would (a) poll zero forever,
+    burning the full 45s render cap on every attempt, and (b) make the
+    structural signal classify every real results page as blocked. Match a
+    module-level `_RESULT_MARKERS` set with `any()` — no config plumbing, no
+    locale coupling, survives both a redirect and the relocation.
+    **1.8-1.10 must land together**, or the first live arm measures a broken
+    harness rather than the evasion bundle.
 
 ### Files
 - Modify: `backend/sources/kayak.py`, `.gitignore`
@@ -163,20 +186,21 @@ empty when warm-up is off.
 - `test_derived_user_agent_strips_headless_token`
 - `test_fingerprint_consistent_for_default_config`
 - `test_fingerprint_inconsistent_when_user_agent_says_headless`
-- `test_fingerprint_inconsistent_when_locale_and_timezone_disagree`
+- `test_fingerprint_allows_english_locale_with_a_non_english_timezone`
+  (pins that the shipped configuration is not rejected by its own check)
+- `test_fingerprint_inconsistent_when_timezone_is_missing`
 - `test_fingerprint_inconsistent_for_headless_default_viewport`
 - `test_warmup_sequence_visits_homepage_before_search_url`
 - `test_warmup_sequence_empty_when_warmup_url_not_set`
 - `test_warmup_dwell_is_not_always_the_same_value`
 - `test_simulate_interaction_emits_mouse_and_scroll_events`
-- `test_result_marker_is_portuguese_for_pt_br_locale` (1.9)
-- `test_result_marker_is_english_for_en_locale` (1.9)
+- `test_result_markers_include_english_and_localized_variants` (1.10)
 - `test_config_defaults_to_the_c1_c4_bundle` (also pins that C5 is not
   reachable through config, per Decision 2)
 - `test_kayak_source_accepts_a_render_config`
 - `test_kayak_source_defaults_to_the_bundle_config`
 
-Added to `tests/test_kayak_source.py` for 1.8:
+Added to `tests/test_kayak_source.py` for 1.9:
 - `test_validate_keeps_row_whose_price_uses_dot_thousands_separator`
 - `test_validate_keeps_row_whose_price_uses_comma_decimals`
 
@@ -245,7 +269,7 @@ on any failure.
 - `test_structural_signal_does_not_flag_long_page_that_merely_lacks_markers`
   — the signal must key on "short AND no action buttons", never on "no known
   marker matched"; a redesign or unexpected locale is not evidence of a block
-- `test_structural_signal_follows_the_configured_locale_marker` (1.9)
+- `test_structural_signal_recognises_localized_action_buttons` (1.10)
 - `test_sample_capture_writes_body_and_sidecar`
 - `test_sample_sidecar_records_config_id_and_blocked_verdict`
 - `test_sample_capture_survives_unwritable_directory` (capture is telemetry,
@@ -292,6 +316,11 @@ Point the configured browser at `bot.sannysoft.com` and
 `abrahamjuliot.github.io/creepjs`; capture results. Confirm no
 "Headless"/webdriver flags and that `_fingerprint_is_consistent` agrees.
 **Fix any self-own here before spending a single live attempt.**
+
+Also confirm here, cheaply, that **`kayak.com` does not force-redirect to a
+local domain** from the egress IP in use. If it does, task 1.10's marker set
+is what keeps the harness working, but the LLM extraction prompt should be
+checked against the redirected page's language before the arm is trusted.
 
 ### Step 2 — the bundle against Kayak
 

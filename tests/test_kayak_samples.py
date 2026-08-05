@@ -43,14 +43,14 @@ def _results_page(marker: str = "Selecionar", rows: int = 12) -> str:
 # --- structural block signal (task 2.5) ---
 
 async def test_structural_signal_flags_short_page_with_no_select_occurrences():
-    from backend.sources.kayak import KayakRenderConfig, _looks_blocked_structurally
-    assert _looks_blocked_structurally(_INTERSTITIAL, KayakRenderConfig()) is True
+    from backend.sources.kayak import _looks_blocked_structurally
+    assert _looks_blocked_structurally(_INTERSTITIAL) is True
 
 
 async def test_structural_signal_does_not_flag_long_results_page():
-    from backend.sources.kayak import KayakRenderConfig, _looks_blocked_structurally
+    from backend.sources.kayak import _looks_blocked_structurally
     page = _results_page(marker="Selecionar")
-    assert _looks_blocked_structurally(page, KayakRenderConfig(locale="pt-BR")) is False
+    assert _looks_blocked_structurally(page) is False
 
 
 async def test_structural_signal_does_not_flag_long_page_that_merely_lacks_markers():
@@ -59,21 +59,22 @@ async def test_structural_signal_does_not_flag_long_page_that_merely_lacks_marke
     button -- a Kayak redesign, an error page with content, an unexpected
     locale -- is not evidence of a block, and calling it one would silently
     discard real prices."""
-    from backend.sources.kayak import KayakRenderConfig, _looks_blocked_structurally
+    from backend.sources.kayak import _looks_blocked_structurally
     long_page = "Resultados\n" + ("conteudo da pagina sem botao reconhecido\n" * 200)
     assert len(long_page) > 2000
-    assert _looks_blocked_structurally(long_page, KayakRenderConfig()) is False
+    assert _looks_blocked_structurally(long_page) is False
 
 
-async def test_structural_signal_follows_the_configured_locale_marker():
-    """A pt-BR results page full of 'Selecionar' must not be judged against
-    the English token, and vice versa -- otherwise switching the bundle to
-    kayak.com.br makes every real page look blocked."""
-    from backend.sources.kayak import KayakRenderConfig, _looks_blocked_structurally
+async def test_structural_signal_recognises_localized_action_buttons():
+    """The bundle requests the English site, but Kayak may force-redirect by
+    IP geography and the deployment moves country. A results page whose
+    buttons read "Selecionar" or "Auswaehlen" is still a results page --
+    judging it against "Select" alone would call it blocked and silently
+    discard real prices."""
+    from backend.sources.kayak import _looks_blocked_structurally
 
-    short_pt = "Selecionar\n"
-    assert _looks_blocked_structurally(short_pt, KayakRenderConfig(locale="pt-BR")) is False
-    assert _looks_blocked_structurally(short_pt, KayakRenderConfig(locale="en-US")) is True
+    for marker in ("Select", "Selecionar", "Auswählen"):
+        assert _looks_blocked_structurally(_results_page(marker=marker)) is False, marker
 
 
 # --- sample capture (task 2.4) ---

@@ -10,3 +10,7 @@ data/
 *.swp
 *.swo
 .history/
+
+# Core dumps from crashed Playwright/multiprocessing workers (see 017-phase-6)
+core
+core.*

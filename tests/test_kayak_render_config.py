@@ -94,14 +94,27 @@ async def test_fingerprint_inconsistent_when_user_agent_says_headless():
     assert _fingerprint_is_consistent(options) is False
 
 
-async def test_fingerprint_inconsistent_when_locale_and_timezone_disagree():
-    """A pt-BR browser reporting a Swiss timezone is more suspicious than no
-    override at all -- this is the self-own the smoke test exists to catch
-    before any live attempt is spent on it."""
+async def test_fingerprint_allows_english_locale_with_a_non_english_timezone():
+    """Language preference and physical location are independent facts about a
+    real person: an English-preferring resident of Brazil (or Switzerland) is
+    entirely ordinary. Requiring locale and timezone to agree on region would
+    reject the configuration this project actually ships -- English site,
+    local timezone -- so the consistency check must not enforce it."""
     from backend.sources.kayak import KayakRenderConfig, _context_options, _fingerprint_is_consistent
-    options = _context_options(
-        KayakRenderConfig(locale="pt-BR", timezone_id="Europe/Zurich"), _HEADLESS_UA
-    )
+
+    for tz in ("America/Sao_Paulo", "Europe/Zurich"):
+        options = _context_options(KayakRenderConfig(locale="en-US", timezone_id=tz), _HEADLESS_UA)
+        assert _fingerprint_is_consistent(options) is True, tz
+
+
+async def test_fingerprint_inconsistent_when_timezone_is_missing():
+    """Timezone is OS-derived and trivially cross-checked against IP
+    geolocation, so it is the one field that must always be set deliberately.
+    Falling through to the container's UTC is a mismatch against any
+    residential egress."""
+    from backend.sources.kayak import KayakRenderConfig, _context_options, _fingerprint_is_consistent
+    options = _context_options(KayakRenderConfig(), _HEADLESS_UA)
+    options["timezone_id"] = ""
     assert _fingerprint_is_consistent(options) is False
 
 
@@ -160,22 +173,20 @@ async def test_simulate_interaction_emits_mouse_and_scroll_events():
     assert page.mouse.wheel.await_count >= 1 or page.evaluate.await_count >= 1
 
 
-# --- locale-aware result marker (task 1.9) ---
-# _wait_for_results_stable polls the count of the per-row action button text,
-# and the structural block signal keys off the same token. Switching the
-# bundle to kayak.com.br makes that button "Selecionar", not "Select" -- so a
-# hardcoded "Select" would poll zero forever (burning the full render cap on
-# every attempt) AND make the structural signal call every real results page
-# blocked. The marker has to follow the locale.
+# --- result-button markers (task 1.9) ---
+# _wait_for_results_stable polls the count of the per-row action button, and
+# the structural block signal keys off the same token. The bundle pins the
+# English site so that token is "Select" -- but Kayak may force-redirect by IP
+# geography, and the deployment moves country. A locale-driven lookup would
+# then be wrong in exactly the cases that matter, so match a small SET of
+# known button labels instead: no config plumbing, no locale coupling, and it
+# survives both a redirect and a relocation.
 
-async def test_result_marker_is_portuguese_for_pt_br_locale():
-    from backend.sources.kayak import KayakRenderConfig, _result_marker
-    assert _result_marker(KayakRenderConfig(locale="pt-BR")) == "Selecionar"
-
-
-async def test_result_marker_is_english_for_en_locale():
-    from backend.sources.kayak import KayakRenderConfig, _result_marker
-    assert _result_marker(KayakRenderConfig(locale="en-US")) == "Select"
+async def test_result_markers_include_english_and_localized_variants():
+    from backend.sources.kayak import _RESULT_MARKERS
+    assert "Select" in _RESULT_MARKERS
+    assert "Selecionar" in _RESULT_MARKERS   # kayak.com.br, if redirected
+    assert "Auswählen" in _RESULT_MARKERS    # kayak.ch, after the move
 
 
 # --- the bundle as shipped ---
@@ -191,8 +202,14 @@ async def test_config_defaults_to_the_c1_c4_bundle():
     assert config.user_data_dir                  # C3
     assert config.warmup_url                     # C3
     assert config.stealth is True                # C4
-    assert config.locale and config.timezone_id  # C1
+    assert config.timezone_id                    # C1, must be deliberate
     assert config.viewport["width"] > 0 and config.viewport["height"] > 0
+
+    # English site, pinned: one parsing surface for the life of the project,
+    # independent of where the deployment physically sits. Timezone tracks the
+    # egress geography; language does not have to.
+    assert config.locale.startswith("en")
+    assert "kayak.com.br" not in (config.warmup_url or "")
 
 
 async def test_kayak_source_accepts_a_render_config():
