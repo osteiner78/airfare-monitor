@@ -602,6 +602,16 @@ class KayakSource:
             return text
 
     @staticmethod
+    def _first_carrier(value) -> str:
+        # Kayak names a connecting itinerary by every operator
+        # ("Azul, easyJet") while the Google sources use only the first
+        # (fast_flights.py, `r.airlines[0]`). airline is a third of the
+        # identity key, so keeping the list would stop such flights ever
+        # merging across sources -- the duplication plan 019 exists to remove.
+        text = " ".join(str(value or "").split())
+        return text.split(",")[0].strip()
+
+    @staticmethod
     def _clean_flight_number(value) -> str:
         text = " ".join(str(value or "").split())
         return "" if text.lower() in _PLACEHOLDER_FLIGHT_NUMBERS else text
@@ -614,7 +624,7 @@ class KayakSource:
             currency=currency,
             duration_min=row.get("duration_min"),
             stops=row.get("stops") or 0,
-            airline=row.get("airline", ""),
+            airline=KayakSource._first_carrier(row.get("airline")),
             flight_number=KayakSource._clean_flight_number(row.get("flight_number")),
             departure_time=KayakSource._canonical_timestamp(row.get("departure_time")),
             arrival_time=KayakSource._canonical_timestamp(row.get("arrival_time")),

@@ -315,6 +315,75 @@ async def test_map_result_keeps_a_genuine_flight_number():
     assert result.flight_number == "TP 84"
 
 
+# Plan 019 task 2.6: Kayak names a connecting itinerary by every operator
+# ("Azul, easyJet" -- observed live 2026-08-05) while the Google sources name
+# only the first (fast_flights.py, `r.airlines[0]`). airline is a third of the
+# identity key, so casefolding cannot bridge the two forms and such flights
+# would never merge across sources -- the duplication this phase exists to
+# remove, reappearing through a different field.
+
+@pytest.mark.parametrize(
+    "rendered,expected",
+    [
+        ("Azul, easyJet", "Azul"),
+        ("Azul, TAP AIR PORTUGAL", "Azul"),
+        ("Royal Air Maroc,easyJet,Vueling", "Royal Air Maroc"),
+        ("TAP AIR PORTUGAL", "TAP AIR PORTUGAL"),
+        ("", ""),
+        (None, ""),
+    ],
+)
+async def test_map_result_keeps_only_the_first_carrier_of_a_multi_carrier_itinerary(
+    rendered, expected
+):
+    from backend.sources.kayak import KayakSource
+
+    row = {
+        "airline": rendered,
+        "flight_number": None,
+        "departure_time": "2026-10-04T00:30:00",
+        "arrival_time": "2026-10-04T17:40:00",
+        "price": 553.0,
+    }
+    result = KayakSource._map_result(row, "EUR", "https://example.com")
+    assert result.airline == expected
+
+
+async def test_multi_carrier_kayak_row_shares_one_key_with_the_google_row():
+    """The point of 2.6 -- the same physical itinerary quoted by both sources
+    must collapse to one identity, not churn new/missing every cycle."""
+    from backend.sources.base import FlightResult
+    from backend.sources.kayak import KayakSource
+    from backend.fingerprint import make_flight_key
+
+    kayak = KayakSource._map_result(
+        {
+            "airline": "Azul, TAP AIR PORTUGAL",
+            "flight_number": None,
+            "departure_time": "2026-10-04T00:30:00",
+            "arrival_time": "2026-10-04T17:40:00",
+            "price": 553.0,
+        },
+        "EUR",
+        "https://example.com",
+    )
+    google = FlightResult(
+        source="google_flights",
+        price=612.0,
+        currency="EUR",
+        duration_min=1030,
+        stops=1,
+        airline="Azul",
+        flight_number="AD 8700",
+        departure_time="2026-10-04T00:30:00",
+        arrival_time="2026-10-04T17:40:00",
+        legs_json="[]",
+        booking_url="https://example.com",
+    )
+
+    assert make_flight_key(kayak) == make_flight_key(google)
+
+
 async def test_extraction_prompt_states_the_list_view_has_no_flight_numbers(monkeypatch):
     """The prompt previously demanded flight_number as a required string, which
     is what pushed the model into inventing one. It must instead say the list
