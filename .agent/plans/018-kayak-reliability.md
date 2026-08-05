@@ -35,7 +35,7 @@ Being blocked is the expected outcome, and there is a lot of headroom.
    from page JS — a getter on a property CDP's serialization touches fires
    only under automation. It works regardless of headless/headful and
    regardless of how well everything else is spoofed. This is what
-   `rebrowser-playwright` exists to patch.
+   `patchright` (task 2.3) exists to patch.
 2. **`navigator.webdriver === true`**, set by Chromium under automation.
 3. **Headless fingerprint** — SwiftShader software WebGL renderer instead of
    a real GPU string, `window.outerWidth/outerHeight === 0`, minimal font
@@ -216,7 +216,7 @@ Paste into `.agent/reports/018-phase-1.md`.
 
 ---
 
-## Phase 2 — Headful under Xvfb, rebrowser, and the sample harness
+## Phase 2 — Headful under Xvfb, the CDP patch, and the sample harness
 
 ### Intent
 The two bundle rungs that need infrastructure (C2 headful, C4 CDP-leak
@@ -235,11 +235,46 @@ interpretable. Out of scope: running the experiment (Phase 3).
     today exits with code 1.
 2.2 `docker-compose.yml`: `DISPLAY=:99`; start Xvfb alongside uvicorn (a
     tiny entrypoint script, or `xvfb-run`). Must not break `--reload`.
-2.3 Swap `playwright` for `rebrowser-playwright` in `requirements.txt`
-    (C4 — patches the `Runtime.enable` CDP leak). Import sites stay
-    identical; **pin the version** as the current `playwright==1.62.0` is.
-    If the swap proves disruptive, `playwright-stealth` is the fallback —
-    weaker, but additive rather than a fork.
+2.3 **CDP-leak patch — use `patchright==1.61.2`** (C4).
+    **Corrected 2026-08-05.** This task originally named
+    `rebrowser-playwright` and claimed "import sites stay identical". Both
+    were wrong, and neither had been verified when written:
+    - `rebrowser-playwright`'s newest release is **1.52.0**, so pinning it
+      "as the current `playwright==1.62.0` is" would mean a 10-version
+      downgrade plus an older bundled Chromium.
+    - The wheel installs a **`rebrowser_playwright`** top-level module, so
+      the import changes either way.
+
+    `patchright` fixes the same class of leak (`Runtime.enable` /
+    `Console.enable`) while tracking the current Playwright generation
+    (1.61 vs 1.62), so it delivers this task's *intent* at a one-version
+    gap instead of ten.
+
+    **Why not the `playwright-stealth` fallback:** it patches JS-visible
+    properties only and does **not** touch the CDP leak — the factor this
+    plan ranks #1. Shipping it would mean running Phase 3 believing C4 is
+    under test when it isn't, and misattributing the result. If patchright
+    proves unworkable, **defer C4 and say so in the report** rather than
+    substituting something that doesn't do the job.
+
+    Scope, verified 2026-08-05:
+    - **One** real import site: `backend/sources/kayak.py:235`
+      (`from playwright.async_api import async_playwright`). The
+      `"playwright"` string in `_fingerprint_is_consistent` is a UA check,
+      not a package reference — leave it. The `rebrowser-playwright` mention
+      in `KayakRenderConfig`'s docstring is now stale; correct it here.
+    - `Dockerfile`: `playwright install --with-deps chromium` →
+      `patchright install --with-deps chromium`. **Install one browser set,
+      not two** — the existing `/root/.cache/ms-playwright` is already 656MB
+      and nothing else in the codebase launches a browser. Confirm whether
+      `patchright` pulls `playwright` as a dependency before deciding
+      whether `playwright==1.62.0` stays in `requirements.txt`.
+    - This phase's Verification block below still imports `playwright` —
+      update it too.
+
+    **Sequence this task LAST within Phase 2.** 2.2 and 2.4-2.7 are
+    independent of it, so a dependency problem here must not block the Xvfb
+    fix, the sample harness, or the UA memoization.
 2.4 **Sample capture harness.** On every Kayak attempt, persist the rendered
     body to `data/kayak-samples/{iso-timestamp}.txt` plus a JSON sidecar:
     config id, blocked verdict, body length, `"Select"` occurrence count,
@@ -302,7 +337,7 @@ launches inside it; full suite green.
 docker compose up -d --build && docker compose ps
 docker exec airfare-monitor python -c "
 import asyncio
-from playwright.async_api import async_playwright
+from patchright.async_api import async_playwright   # patchright after 2.3; playwright before it
 async def m():
     async with async_playwright() as p:
         b = await p.chromium.launch(headless=False)
