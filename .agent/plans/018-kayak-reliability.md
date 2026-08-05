@@ -446,7 +446,15 @@ the sample and double the request rate from that IP. Either pause tracker 20
 At n=10 this distinguishes "works" from "doesn't"; it cannot resolve 40% vs
 60%, so do not over-read the middle band.
 
-### Step 3 — ceiling test (only if Step 2 failed)
+### Step 3 — ceiling test — **NOT RUN, and now moot**
+Step 2 passed at 0 blocks / 10, so the C5 ceiling test has nothing left to
+answer. It existed only to distinguish "the bundle is missing something"
+from "the barrier isn't the fingerprint" in the event of failure. Do not
+run it.
+
+<details><summary>Original text, retained for the record</summary>
+
+#### (only if Step 2 had failed)
 C5: launch Chrome manually with `--remote-debugging-port=9222` using the
 real profile, attach via `connect_over_cdp`, run 2–3 attempts. **This is
 diagnostic only and cannot ship** (Decision 2).
@@ -460,11 +468,50 @@ diagnostic only and cannot ship** (Decision 2).
 Step 2 now runs on the residential IP, which *is* the production egress, so
 there is no change of egress left to validate. Skip straight to Step 5.
 
-### Step 5 — promote
+</details>
+
+### Step 5 — promote — **BLOCKED, deferred to its own plan**
+Step 2 answered the question this plan set out to answer. Promotion is
+blocked on three data-correctness defects that only became *observable* once
+pages started rendering — plan 017 Phase 6 was 0/5 renders, so the
+extraction path had never once run against real Kayak data. Two of the three
+are design decisions, not patches:
+
+1. **Currency is not what we asked for.** Verified independently: all 9
+   captured bodies show `United States dollar` and `$`-prefixed prices
+   despite `?currency=EUR`. `_map_result` stamps the *tracker's* currency, so
+   promoting as-is writes USD values labelled EUR. Root cause is an open
+   question plan 017 task 2.3 raised and never closed ("confirm the real
+   currency param name during implementation — the prototype ran USD-default
+   and didn't need to test this").
+2. **Flight identity.** Kayak's collapsed results list does not print flight
+   numbers; the model returns `""`, `"N/A"`, `"unknown"`, `"AT"` for the same
+   flight across runs. This fragments Kayak's own history — and, more
+   fundamentally, means **plan 017 Phase 1's cross-source merge does not
+   actually work for Kayak**. Phase 1 dropped `source` from `flight_key` so
+   one physical flight from Google and Kayak would share an identity, but
+   `airline|flight_number|departure_time` can never match Google's
+   `TAP AIR PORTUGAL|TP 84|…` when Kayak supplies no number at all. The
+   phantom new/missing duplication Phase 1 existed to prevent returns for a
+   different reason.
+3. **Extraction latency tail** — 1 of 6 thinking-disabled runs hit 32s
+   against a 30s cap. Degrades gracefully; lowest severity of the three.
+
+Also outstanding before any further live run:
+- **Harness gap:** a render that hangs to `_OVERALL_TIMEOUT_S` produces no
+  sample at all (attempt 7), so task 2.4's "record every attempt" is unmet
+  on precisely the path where a body would be most diagnostic.
+- **Unmeasured claim:** the 3.2/3.3 extraction fixes were validated against
+  *captured* bodies, never live. "4/9 → ~9/9" is a reasonable inference, not
+  a measurement.
+
+<details><summary>Original Step 5 text</summary>
 Only after Step 2 passes: re-enable Kayak on tracker 20, revisit plan 017's tasks 6.3/6.4
 (which were confounded by the unrelated `fast_flights` TypeError), and
 finally close 017's Phase 6 with a real success sample and the 6.6 hand
 spot-check against kayak.com.
+
+</details>
 
 ### Files
 None — experiment only.
