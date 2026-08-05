@@ -82,6 +82,41 @@ _RESULT_MARKERS_LOWER = {marker.lower() for marker in _RESULT_MARKERS}
 # silently discard real prices.
 _MIN_RESULTS_PAGE_CHARS = 2000
 
+# Kayak's header nav renders the *active* currency as an adjacent
+# symbol/name pair on its own two lines (e.g. "$\nUnited States dollar" --
+# verified across all 9 captured bodies in data/kayak-samples/). A currency
+# PICKER component elsewhere on the page (CurrencyPickerStateProviderAction,
+# confirmed live 2026-08-05) lists every currency Kayak supports as
+# candidates, including "Euro" and "British pound" -- a bare substring
+# search for a currency name would false-positive on that picker rather
+# than reading what was actually served, which is exactly the trap the
+# tests guard against. Only USD (evidenced from real captured samples) and
+# EUR (this project's only tracker currency, and this plan's own test
+# contract) are mapped -- GBP/CHF haven't been seen in Kayak's real header
+# text, so an unrecognised marker returns None (refuse) rather than
+# guessing their spelling.
+_CURRENCY_MARKERS: dict[str, tuple[str, str]] = {
+    "USD": ("$", "united states dollar"),
+    "EUR": ("€", "euro"),
+}
+
+
+def _page_currency(body_text: str) -> str | None:
+    """The currency Kayak actually served, read from the header chrome --
+    not from the request we sent (plan 019 Decision 1: forcing via
+    ?currency= is unverified and was falsified live; a live investigation
+    during this phase found no reliable alternative forcing mechanism --
+    no dedicated currency cookie, and the CurrencyPicker XHR returns the
+    full candidate list rather than the active selection)."""
+    lines = body_text.split("\n")
+    for i in range(len(lines) - 1):
+        symbol = lines[i].strip()
+        name = lines[i + 1].strip().lower()
+        for code, (marker_symbol, marker_name) in _CURRENCY_MARKERS.items():
+            if symbol == marker_symbol and name == marker_name:
+                return code
+    return None
+
 
 @dataclass
 class KayakRenderConfig:
@@ -281,23 +316,47 @@ class KayakSource:
         self, url: str, top_n: int, currency: str, depart_date: str
     ) -> list[FlightResult]:
         started = time.monotonic()
-        body_text = await self._render(url)
-
+        # Built before _render (plan 019 task 1.4): a render that hangs to
+        # _OVERALL_TIMEOUT_S used to leave the `finally` below unreached, so
+        # the hardest failures left no sample at all (018 attempt 7).
+        body_text = ""
         record = {
             **self.sample_context,
             "config_id": self.config.config_id,
-            "blocked_by_markers": self._looks_blocked(body_text),
-            "blocked_by_structure": _looks_blocked_structurally(body_text),
+            "blocked_by_markers": False,
+            "blocked_by_structure": False,
             "extracted_rows": 0,
             "validated_rows": 0,
             "outcome": "error",
         }
 
         try:
+            body_text = await self._render(url)
+            record["blocked_by_markers"] = self._looks_blocked(body_text)
+            record["blocked_by_structure"] = _looks_blocked_structurally(body_text)
+
             if record["blocked_by_markers"] or record["blocked_by_structure"]:
                 record["outcome"] = "blocked"
                 signal = "markers" if record["blocked_by_markers"] else "page structure"
                 self.last_error = f"Kayak render appears blocked by bot detection ({signal})"
+                self.last_error_level = "WARNING"
+                return []
+
+            # Same cost-ordering rule as the block check (plan 019 task 1.2):
+            # never spend an LLM call on a page we are going to refuse
+            # anyway. An unreadable currency is refused too -- an
+            # unverifiable currency is not a usable one.
+            served_currency = _page_currency(body_text)
+            if served_currency != currency:
+                record["outcome"] = "currency_mismatch"
+                if served_currency is None:
+                    self.last_error = (
+                        f"Kayak page currency could not be verified (requested {currency})"
+                    )
+                else:
+                    self.last_error = (
+                        f"Kayak served {served_currency}, requested {currency} -- refusing"
+                    )
                 self.last_error_level = "WARNING"
                 return []
 

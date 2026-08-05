@@ -30,8 +30,14 @@ def _sample_body():
     trusting it (plan 017 phase 2.7), so a stub body of "<rendered page text>"
     would now correctly cause the sample row to be dropped. Any test that
     expects search() to RETURN results must render text the price appears in.
+
+    Carries a header currency marker (plan 019 phase 1: search() now refuses
+    any page whose served currency doesn't match the requested one) matching
+    "EUR", the currency every test below requests except the one exercising
+    a different currency explicitly.
     """
     return (
+        "English\n€\nEuro\nFeedback\n"
         "Cheapest\n€785\n26h 25m\nTAP AIR PORTUGAL\n1 stop\nGRU-ZRH\nSelect\n"
         "Best\n€1,204\n18h 10m\nSWISS\n1 stop\nGRU-ZRH\nSelect\n"
     )
