@@ -116,7 +116,15 @@ class KayakRenderConfig:
 
 
 def _launch_args(config: KayakRenderConfig) -> list[str]:
-    return ["--disable-blink-features=AutomationControlled"]
+    # Without the ANGLE/SwiftShader pair this container exposes NO WebGL
+    # context at all (verified 2026-08-05, plan 018 Phase 3 Step 1) -- every
+    # real Chrome has one, falling back to SwiftShader on GPU-less hosts, so
+    # zero context is a harder tell than the software-renderer string itself.
+    return [
+        "--disable-blink-features=AutomationControlled",
+        "--use-gl=angle",
+        "--use-angle=swiftshader",
+    ]
 
 
 def _looks_blocked_structurally(body_text: str) -> bool:
