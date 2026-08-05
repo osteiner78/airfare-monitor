@@ -134,6 +134,33 @@ async def test_sample_capture_survives_unwritable_directory(tmp_path):
     assert capture_sample(_INTERSTITIAL, _record(), blocker) is None
 
 
+async def test_search_records_a_sample_even_when_the_render_never_returns(tmp_path):
+    """Plan 018 attempt 7 hit _OVERALL_TIMEOUT_S during _render and recorded
+    NOTHING -- no body, no sidecar -- because _search_inner awaits the render
+    *before* building the record, so its `finally` never engages. That is
+    precisely the attempt a body would be most diagnostic for, and any
+    sidecar-driven analysis silently omits the hardest failures.
+
+    The gap is at the call site, not in capture_sample: passing "" to
+    capture_sample already works, so asserting on that would pass today and
+    prove nothing. Drive it through search() instead."""
+    from unittest.mock import AsyncMock, patch
+    from backend.sources.kayak import KayakRenderConfig, KayakSource
+
+    config = KayakRenderConfig(samples_dir=str(tmp_path))
+    source = KayakSource(config=config)
+
+    with patch.object(source, "_render", AsyncMock(side_effect=TimeoutError("render hung"))):
+        results = await source.search("GRU", "LIS", "2026-10-04", None, "USD", 5)
+
+    assert results == []
+    sidecars = sorted(tmp_path.glob("*.json"))
+    assert len(sidecars) == 1, "the attempt left no sidecar at all"
+    data = json.loads(sidecars[0].read_text())
+    assert data["body_len"] == 0
+    assert data["outcome"] in ("render_timeout", "error")
+
+
 async def test_two_samples_in_the_same_second_do_not_overwrite_each_other(tmp_path):
     """Experiment attempts can land close together, and a lost sample is a lost
     data point that cost a real request."""
