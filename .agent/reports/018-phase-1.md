@@ -148,7 +148,7 @@ track record.
 
 ## Commit
 
-`5eb1b41` — `[phase-1.1-1.10] Turn Kayak's evasion stack into a config seam`
+`2986e63` — `[phase-1.1-1.10] Turn Kayak's evasion stack into a config seam`
 
 ## Deviations from the plan
 
