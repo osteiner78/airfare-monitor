@@ -276,6 +276,65 @@ async def test_search_maps_result_with_missing_optional_fields_without_crashing(
     assert results[0].duration_min is None
 
 
+# --- flight_number is display-only, and Kayak's list view has none ---
+# Plan 019 phase 2: no captured body carries a flight number on any row, so
+# the model filled the field with "", "N/A", "unknown" and "AT" for one
+# physical flight across runs. flight_number is out of the identity key now,
+# but a stored "N/A" still renders as a flight number in the results table,
+# which is a fabricated fact on screen.
+
+@pytest.mark.parametrize("placeholder", ["N/A", "n/a", "unknown", "Unknown", "-", "", None])
+async def test_map_result_normalises_placeholder_flight_numbers_to_empty(placeholder):
+    from backend.sources.kayak import KayakSource
+
+    row = {
+        "airline": "Royal Air Maroc",
+        "flight_number": placeholder,
+        "departure_time": "2026-10-04T00:30:00",
+        "arrival_time": "2026-10-04T17:40:00",
+        "price": 553.0,
+    }
+    result = KayakSource._map_result(row, "USD", "https://example.com")
+    assert result.flight_number == ""
+
+
+async def test_map_result_keeps_a_genuine_flight_number():
+    """Guards against a normalisation that empties the field unconditionally --
+    Kayak's expanded detail view does carry numbers, and a future extraction
+    that reads them must not have them thrown away."""
+    from backend.sources.kayak import KayakSource
+
+    row = {
+        "airline": "Tap Air Portugal",
+        "flight_number": "TP 84",
+        "departure_time": "2026-10-04T00:30:00",
+        "arrival_time": "2026-10-04T17:40:00",
+        "price": 553.0,
+    }
+    result = KayakSource._map_result(row, "USD", "https://example.com")
+    assert result.flight_number == "TP 84"
+
+
+async def test_extraction_prompt_states_the_list_view_has_no_flight_numbers(monkeypatch):
+    """The prompt previously demanded flight_number as a required string, which
+    is what pushed the model into inventing one. It must instead say the list
+    view has none and require null."""
+    import openai
+    from backend.sources.kayak import KayakSource
+
+    captured: dict = {}
+    monkeypatch.setattr(openai, "AsyncOpenAI", _fake_openai_client(captured))
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+
+    await KayakSource()._extract(_sample_body(), 5, "2026-08-21")
+
+    prompt = "\n".join(m["content"] for m in captured["messages"])
+    lowered = prompt.lower()
+    assert "flight_number" in lowered
+    assert "null" in lowered
+    assert "never invent a flight number" in lowered
+
+
 # --- grounding: extracted prices must exist in the rendered text ---
 # An LLM reading a ~100KB text dump will occasionally invent or mis-associate a
 # number. A hallucinated cheap price is PERMANENT damage here:

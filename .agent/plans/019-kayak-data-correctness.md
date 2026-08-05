@@ -204,12 +204,36 @@ Give one physical flight one identity, across sources and across runs.
     *display* field, absent for Kayak rows — it is simply no longer part of
     identity.
 2.4 **Production backfill — explicit user confirmation, backup first.**
-    Recomputable from stored columns, unlike the plan 017 migration:
+    Recomputable from stored columns, unlike the plan 017 migration.
+
+    **Corrected 2026-08-05.** This task originally read
+    `SET flight_key = airline || '|' || …`, concatenating the **raw** airline.
+    That contradicts task 2.2: `make_flight_key` normalises the airline
+    segment, so every backfilled row would have disagreed with the keys the
+    running code generates — for every airline not already lowercase, i.e.
+    nearly all of them. The backfill would have detached history rather than
+    preserving it, which is the one thing it exists to do.
+
+    **Prefer a one-shot Python backfill that calls `make_flight_key` itself**
+    over hand-written SQL. Equivalence by construction beats equivalence by
+    coincidence: SQLite's `LOWER()` is ASCII-only without ICU while Python's
+    `.lower()` is Unicode-aware, and `TRIM()` strips only leading/trailing
+    whitespace while a Python `" ".join(s.split())` also collapses internal
+    runs. 165k rows is trivial to stream in Python.
+
+    If SQL is used anyway, it must mirror 2.2 exactly
+    (`LOWER(TRIM(airline)) || '|' || …`), and the three preconditions that
+    make that equivalent must be **re-checked, not assumed** — verified on
+    2026-08-05 as 40 distinct airlines with 0 non-ASCII, 0 internal
+    double-spaces, 0 leading/trailing whitespace. Record those preconditions
+    next to the SQL in `CLAUDE.md`: this project restores from old backups
+    (see the plan 017 migration note), and a restored DB containing a
+    non-ASCII airline would silently diverge.
+
     ```bash
     docker compose stop
     cp data/airfare.db data/airfare.db.bak-019
-    sqlite3 data/airfare.db "UPDATE flight_prices
-      SET flight_key = airline || '|' || departure_time || '|' || arrival_time;"
+    # ... backfill (Python one-shot preferred, see above) ...
     docker compose start
     ```
     165,574 rows; 29 have an empty `departure_time` and will land on a

@@ -190,3 +190,56 @@ async def test_color_assigned_by_price_rank_not_history_order(client):
     color_by_label = {d["label"]: d["color"] for d in datasets}
     assert color_by_label["Ayy AA1"] == "#4a90d9"
     assert color_by_label["Bee BB2"] == "#e67e22"
+
+
+# --- NEW-BEHAVIOR (plan 019, Phase 2): the chart-point merge must survive a
+# searched_at tie. _build_detail_context collapses the rows of one
+# (flight_key, snapshot_id) into a single point by comparing against the
+# previous row only, so same-snapshot rows have to arrive adjacent. Ordering
+# by searched_at alone does not guarantee that when two snapshots share a
+# second-resolution timestamp -- and plan 019's identity change made a key
+# repeat within a snapshot 27x more common, so a tie now lands on colliding
+# rows rather than passing harmlessly through.
+
+@pytest.mark.asyncio
+async def test_two_snapshots_sharing_a_timestamp_stay_two_points_with_a_repeated_key(client):
+    from backend.db import create_snapshot, insert_flight_prices
+
+    await client.post("/api/trackers", json={
+        "origin": "GVA", "destination": "BCN", "depart_date": "2026-09-15",
+    })
+
+    key = "swiss|2026-01-01T08:00:00|2026-01-01T10:00:00"
+    tied_at = "2026-01-01 00:00:00"
+
+    def _row(price: float, source: str):
+        return {
+            "flight_key": key, "source": source, "price": price, "currency": "EUR",
+            "airline": "SWISS", "flight_number": "",
+            "departure_time": "2026-01-01T08:00:00",
+            "arrival_time": "2026-01-01T10:00:00",
+            "duration_min": 120, "stops": 0,
+        }
+
+    # Each snapshot carries the SAME key twice (two sources quoting one
+    # physical flight), which is the case the identity change makes common.
+    snap1 = await create_snapshot(1, results_count=2)
+    await _set_searched_at(snap1["id"], tied_at)
+    await insert_flight_prices(snap1["id"], 1, [_row(100.0, "a"), _row(120.0, "b")])
+
+    snap2 = await create_snapshot(1, results_count=2)
+    await _set_searched_at(snap2["id"], tied_at)
+    await insert_flight_prices(snap2["id"], 1, [_row(300.0, "a"), _row(320.0, "b")])
+
+    response = await client.get("/trackers/1")
+    datasets = _extract_js_global(response.text, "chartData")
+
+    assert datasets, "chartData was not emitted at all"
+    series = [d for d in datasets if d["data"]]
+    assert series, "no dataset carried any history points"
+    points = series[0]["data"]
+
+    # Two snapshots -> two points; four rows must not become four points, and
+    # the two rows of each snapshot must merge to that snapshot's cheapest.
+    assert len(points) == 2
+    assert [p["y"] for p in points] == [100.0, 300.0]

@@ -57,12 +57,20 @@ _EXTRACTION_SYSTEM_PROMPT = (
     "You extract flight search results from the plain-text body of a Kayak "
     "flight results page. Respond with a JSON object of the form "
     '{"flights": [...]}. Each item must have: airline (string), '
-    "flight_number (string, use '+' to join multi-leg flight numbers), "
-    "departure_time (ISO 8601), arrival_time (ISO 8601), duration_min "
-    "(integer minutes or null), stops (integer or null), price (number, no "
-    "currency symbol or thousands separators). Only include flights that are "
-    "genuinely present in the text -- never invent a row."
+    "flight_number (always null -- Kayak's collapsed list view does not print "
+    "flight numbers on any row; never invent a flight number, and never use a "
+    'placeholder such as "N/A" or "unknown"), departure_time (ISO 8601), '
+    "arrival_time (ISO 8601), duration_min (integer minutes or null), stops "
+    "(integer or null), price (number, no currency symbol or thousands "
+    "separators). Only include flights that are genuinely present in the text "
+    "-- never invent a row."
 )
+
+# The model filled flight_number with "", "N/A", "unknown" and "AT" for one
+# physical flight across runs (plan 018 Phase 3). flight_number is no longer
+# part of the identity key, but a stored placeholder still renders in the
+# results table's Flight column as though it were a real flight number.
+_PLACEHOLDER_FLIGHT_NUMBERS = {"", "-", "n/a", "na", "none", "null", "unknown"}
 
 # The per-row action button _wait_for_results_stable polls for, and the
 # structural block signal (plan 018 task 2.5) keys off the same token. The
@@ -576,6 +584,11 @@ class KayakSource:
         return kept
 
     @staticmethod
+    def _clean_flight_number(value) -> str:
+        text = " ".join(str(value or "").split())
+        return "" if text.lower() in _PLACEHOLDER_FLIGHT_NUMBERS else text
+
+    @staticmethod
     def _map_result(row: dict, currency: str, url: str) -> FlightResult:
         return FlightResult(
             source="kayak",
@@ -584,7 +597,7 @@ class KayakSource:
             duration_min=row.get("duration_min"),
             stops=row.get("stops") or 0,
             airline=row.get("airline", ""),
-            flight_number=row.get("flight_number", ""),
+            flight_number=KayakSource._clean_flight_number(row.get("flight_number")),
             departure_time=row.get("departure_time", ""),
             arrival_time=row.get("arrival_time", ""),
             legs_json="[]",

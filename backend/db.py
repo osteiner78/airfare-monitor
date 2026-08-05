@@ -263,7 +263,14 @@ async def get_price_history(tracker_id: int, flight_keys: list[str] | None = Non
         query += f" AND fp.flight_key IN ({placeholders})"
         params.extend(flight_keys)
 
-    query += " ORDER BY s.searched_at ASC"
+    # snapshot_id breaks searched_at ties: _build_detail_context merges the
+    # rows of one (flight_key, snapshot_id) into a single chart point by
+    # comparing against the previous row only, which needs same-snapshot rows
+    # to be adjacent. searched_at is second-resolution, so two snapshots can
+    # share one -- and plan 019's identity change made a key repeat within a
+    # snapshot 27x more common (570 -> 15,441 rows), turning a latent
+    # mis-merge into a likely one.
+    query += " ORDER BY s.searched_at ASC, fp.snapshot_id ASC"
 
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
