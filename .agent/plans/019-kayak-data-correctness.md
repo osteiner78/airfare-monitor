@@ -241,6 +241,20 @@ Give one physical flight one identity, across sources and across runs.
 2.5 Re-verify the five dedup sites from plan 017 Phase 1 plus `history_by_key`
     still behave, since the merge rate changes: rows that were distinct may
     now collapse.
+2.6 **Multi-carrier airline names — take the first carrier** (added
+    2026-08-05, flagged during 2.1-2.5 as needing a decision). Kayak names a
+    connecting itinerary by every operator (`"Azul, easyJet"`); the Google
+    sources name only the first (`fast_flights.py:120`,
+    `airline = r.airlines[0]`). Casefolding cannot bridge that, so such
+    flights would never merge across sources — the exact duplication this
+    phase exists to remove.
+    Decision: `KayakSource` emits the **first** carrier only, matching the
+    existing convention. No backfill needed — verified 2026-08-05 that all
+    40 distinct airline values already stored are single-carrier, so Google
+    rows are already in this form. A wrong merge would require the same
+    first carrier *and* the same departure *and* arrival time, which is the
+    same physical itinerary.
+    Test: `test_map_result_keeps_only_the_first_carrier_of_a_multi_carrier_itinerary`.
 
 ### Files
 - Modify: `backend/fingerprint.py`, `backend/sources/kayak.py`
