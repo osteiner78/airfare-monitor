@@ -21,10 +21,24 @@ _API_KEY_ENV = "DEEPSEEK_API_KEY"
 # verification; Zen's "deepseek-v4-flash-free" worked with the same key and
 # has no such cap (confirmed 2026-08-04 with a real request).
 _LLM_BASE_URL = "https://opencode.ai/zen/v1"
-_LLM_MODEL = "deepseek-v4-flash-free"
+# Chosen by the plan 019 Phase 3b benchmark (200 replays of 5 captured bodies
+# across 4 candidates, .agent/reports/019-phase-3b.md), not by preference.
+# deepseek-v4-flash-free's problem was never accuracy, it was that Zen honours
+# "thinking: disabled" only ~3 times in 10 and a thinking run blows the LLM
+# budget. mimo-v2.5-free emitted 509 or 523 completion tokens on all 50 runs --
+# two values, no reasoning burst ever -- so the flag cannot be ignored, because
+# there is no reasoning mode to ignore it with. Same correctness (49/50), and
+# 48/50 runs under 23s against deepseek's 6 runs over 30s.
+_LLM_MODEL = "mimo-v2.5-free"
 
 _RENDER_TIMEOUT_S = 45.0
-_LLM_TIMEOUT_S = 30.0
+# Raised from 30.0 by Phase 3b task 3b.4 ("prefer the tightest tail and raise
+# the cap to fit it"): mimo's 50 measured runs span 4.3-58.7s, so 30s would
+# discard 3 of 50 otherwise-correct extractions. The tail here is network, not
+# reasoning -- the two slowest runs returned the same 523 tokens as the fastest.
+# The margin over the observed max is thin (~2%); anything past the cap is a
+# lost data point by design (3b.5: a hard cap stays regardless of model).
+_LLM_TIMEOUT_S = 60.0
 # Worst case: page.goto's own timeout (_RENDER_TIMEOUT_S) plus
 # _wait_for_results_stable's separate cap (also _RENDER_TIMEOUT_S) can both
 # elapse before the LLM call even starts, so the overall budget must cover
