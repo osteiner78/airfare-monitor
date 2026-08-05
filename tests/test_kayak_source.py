@@ -335,6 +335,61 @@ async def test_extraction_prompt_states_the_list_view_has_no_flight_numbers(monk
     assert "never invent a flight number" in lowered
 
 
+# --- timestamp shape must be stable across runs (plan 019 phase 2) ---
+# Observed live 2026-08-05: the same physical flight came back as
+# "2026-10-04T00:30" on one extraction and "2026-10-04T00:30:00" on the next.
+# departure_time and arrival_time are now TWO THIRDS of the identity key, so
+# an unstable seconds field fragments one flight across runs exactly the way
+# the invented flight numbers did -- the defect this phase exists to remove,
+# reappearing through a different field. Google emits datetime.isoformat(),
+# so canonicalising here also makes the two sources agree.
+
+async def test_map_result_canonicalises_timestamps_missing_seconds():
+    from backend.sources.kayak import KayakSource
+
+    row = {
+        "airline": "Royal Air Maroc", "flight_number": None,
+        "departure_time": "2026-10-04T00:30",
+        "arrival_time": "2026-10-04T17:40",
+        "price": 490.0,
+    }
+    result = KayakSource._map_result(row, "EUR", "https://example.com")
+    assert result.departure_time == "2026-10-04T00:30:00"
+    assert result.arrival_time == "2026-10-04T17:40:00"
+
+
+async def test_same_flight_yields_one_key_whether_or_not_seconds_were_emitted():
+    """The two shapes the live model actually alternated between must not
+    produce two identities."""
+    from backend.sources.kayak import KayakSource
+    from backend.fingerprint import make_flight_key
+
+    base = {"airline": "Royal Air Maroc", "flight_number": None, "price": 490.0}
+    short = KayakSource._map_result(
+        {**base, "departure_time": "2026-10-04T00:30", "arrival_time": "2026-10-04T17:40"},
+        "EUR", "https://example.com")
+    full = KayakSource._map_result(
+        {**base, "departure_time": "2026-10-04T00:30:00", "arrival_time": "2026-10-04T17:40:00"},
+        "EUR", "https://example.com")
+
+    assert make_flight_key(short) == make_flight_key(full)
+
+
+async def test_map_result_leaves_an_unparseable_timestamp_untouched():
+    """Canonicalisation must never drop or crash on a value it cannot read --
+    the row is still worth storing, and _validate is the guard that matters."""
+    from backend.sources.kayak import KayakSource
+
+    row = {
+        "airline": "GOL", "flight_number": None,
+        "departure_time": "tomorrow morning", "arrival_time": "",
+        "price": 498.0,
+    }
+    result = KayakSource._map_result(row, "EUR", "https://example.com")
+    assert result.departure_time == "tomorrow morning"
+    assert result.arrival_time == ""
+
+
 # --- grounding: extracted prices must exist in the rendered text ---
 # An LLM reading a ~100KB text dump will occasionally invent or mis-associate a
 # number. A hallucinated cheap price is PERMANENT damage here:

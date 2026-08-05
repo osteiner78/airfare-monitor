@@ -5,6 +5,7 @@ import os
 import random
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from backend.kayak_samples import _DEFAULT_SAMPLES_DIR, _SAMPLES_DIR_ENV, capture_sample
 from backend.sources.base import FlightResult
@@ -584,6 +585,23 @@ class KayakSource:
         return kept
 
     @staticmethod
+    def _canonical_timestamp(value) -> str:
+        # The model alternates between "2026-10-04T00:30" and
+        # "...T00:30:00" for the same flight across runs (observed live
+        # 2026-08-05). Both times are two thirds of the identity key, so the
+        # difference forks one flight into two. datetime.isoformat() is also
+        # exactly what GoogleFlightsSource emits, so this is what makes the
+        # two sources' keys line up. Unparseable values pass through: the row
+        # is still worth storing and _validate is the guard that matters.
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        try:
+            return datetime.fromisoformat(text).isoformat()
+        except ValueError:
+            return text
+
+    @staticmethod
     def _clean_flight_number(value) -> str:
         text = " ".join(str(value or "").split())
         return "" if text.lower() in _PLACEHOLDER_FLIGHT_NUMBERS else text
@@ -598,8 +616,8 @@ class KayakSource:
             stops=row.get("stops") or 0,
             airline=row.get("airline", ""),
             flight_number=KayakSource._clean_flight_number(row.get("flight_number")),
-            departure_time=row.get("departure_time", ""),
-            arrival_time=row.get("arrival_time", ""),
+            departure_time=KayakSource._canonical_timestamp(row.get("departure_time")),
+            arrival_time=KayakSource._canonical_timestamp(row.get("arrival_time")),
             legs_json="[]",
             booking_url=url,
         )
