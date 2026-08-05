@@ -118,6 +118,25 @@ unit-testable with no browser. Out of scope: any live Kayak request.
 1.7 Behavioural noise (C4-adjacent): a small scroll and mouse move before
     reading the DOM. Keep as a separate `_simulate_interaction(page)` so it
     can be mocked out.
+1.8 **Locale-aware price grounding** — surfaced while writing the tests.
+    `_price_grounded` builds `{str(n), f"{n:,}"}`, i.e. `"4312"` and
+    `"4,312"`. On `kayak.com.br` a four-digit fare renders `R$ 4.312` — dot
+    for thousands, comma for decimals, the inverse of en-US — so **every
+    expensive itinerary would be dropped as hallucinated**. That failure is
+    silent and indistinguishable from a clean empty extraction, which is
+    precisely the class of bug the grounding check was added to prevent.
+    Add dot-thousands and comma-decimal renderings.
+1.9 **Locale-aware result marker** — same origin, larger blast radius.
+    `_wait_for_results_stable` polls `page.get_by_text("Select", exact=True)`
+    and task 2.5's structural signal keys off the same token. On
+    `kayak.com.br` that button reads **"Selecionar"**, so a hardcoded
+    `"Select"` would (a) poll zero forever, burning the full 45s render cap
+    on every single attempt, and (b) make the structural signal classify
+    every real results page as blocked. Add `_result_marker(config)` driven
+    by `config.locale`, and use it in both places.
+    **This coupling is why 1.8/1.9 must land with the locale change, not
+    after it** — otherwise the first live arm measures a broken harness
+    rather than the evasion bundle.
 
 ### Files
 - Modify: `backend/sources/kayak.py`, `.gitignore`
@@ -129,18 +148,37 @@ unit-testable with no browser. Out of scope: any live Kayak request.
 - `backend/scheduler.py` — cadence is not a countermeasure (Context), so
   nothing about the due-check changes here.
 
-### Tests (all offline, no browser)
-`tests/test_kayak_render_config.py` (new):
+### Tests (all offline, no browser — written, 20 failing as specified)
+`tests/test_kayak_render_config.py` (new). It carries an API contract in its
+header the implementer must follow, because the plan left two things open:
+`_context_options(config, default_ua)` takes the browser's **default user
+agent string**, not a `Browser` object (that is what keeps it pure), and
+`_warmup_sequence(config)` returns only the **pre-search** steps, so it is
+empty when warm-up is off.
+
 - `test_launch_args_disable_automation_controlled_blink_feature`
 - `test_launch_args_do_not_enable_automation`
-- `test_context_options_derive_user_agent_from_browser_version`
+- `test_context_options_derive_user_agent_from_browser_version` (two builds
+  in, two different UAs out — proves derivation, not a hardcoded string)
 - `test_derived_user_agent_strips_headless_token`
 - `test_fingerprint_consistent_for_default_config`
 - `test_fingerprint_inconsistent_when_user_agent_says_headless`
 - `test_fingerprint_inconsistent_when_locale_and_timezone_disagree`
+- `test_fingerprint_inconsistent_for_headless_default_viewport`
 - `test_warmup_sequence_visits_homepage_before_search_url`
 - `test_warmup_sequence_empty_when_warmup_url_not_set`
-- `test_config_defaults_to_the_c1_c4_bundle`
+- `test_warmup_dwell_is_not_always_the_same_value`
+- `test_simulate_interaction_emits_mouse_and_scroll_events`
+- `test_result_marker_is_portuguese_for_pt_br_locale` (1.9)
+- `test_result_marker_is_english_for_en_locale` (1.9)
+- `test_config_defaults_to_the_c1_c4_bundle` (also pins that C5 is not
+  reachable through config, per Decision 2)
+- `test_kayak_source_accepts_a_render_config`
+- `test_kayak_source_defaults_to_the_bundle_config`
+
+Added to `tests/test_kayak_source.py` for 1.8:
+- `test_validate_keeps_row_whose_price_uses_dot_thousands_separator`
+- `test_validate_keeps_row_whose_price_uses_comma_decimals`
 
 ### Success criteria
 All of the above pass; full suite still green.
@@ -196,15 +234,25 @@ interpretable. Out of scope: running the experiment (Phase 3).
 - Tracker 20, or anything reading from the live DB. The runner writes only
   to `data/kayak-samples/`.
 
-### Tests
-`tests/test_kayak_samples.py` (new):
+### Tests (written, 7 failing as specified)
+`tests/test_kayak_samples.py` (new). Contract: `capture_sample(body_text,
+record, samples_dir) -> Path | None` writes `<iso>.txt` (body) and
+`<iso>.json` (record plus derived fields), returning the body path or `None`
+on any failure.
+
 - `test_structural_signal_flags_short_page_with_no_select_occurrences`
 - `test_structural_signal_does_not_flag_long_results_page`
 - `test_structural_signal_does_not_flag_long_page_that_merely_lacks_markers`
+  — the signal must key on "short AND no action buttons", never on "no known
+  marker matched"; a redesign or unexpected locale is not evidence of a block
+- `test_structural_signal_follows_the_configured_locale_marker` (1.9)
 - `test_sample_capture_writes_body_and_sidecar`
 - `test_sample_sidecar_records_config_id_and_blocked_verdict`
-- `test_sample_capture_survives_unwritable_directory` (capture must never
-  take down a search)
+- `test_sample_capture_survives_unwritable_directory` (capture is telemetry,
+  not the job — a search must never fail because a sample could not be
+  written)
+- `test_two_samples_in_the_same_second_do_not_overwrite_each_other` — a lost
+  sample is a lost data point that cost a real request
 
 ### Success criteria
 Tests pass; container rebuilds and reaches `healthy`; headful Chromium

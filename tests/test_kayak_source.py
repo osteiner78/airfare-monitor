@@ -291,6 +291,27 @@ async def test_validate_keeps_row_whose_price_appears_thousands_separated():
     assert len(kept) == 1
 
 
+async def test_validate_keeps_row_whose_price_uses_dot_thousands_separator():
+    """Plan 018 switches the bundle to kayak.com.br / pt-BR, where four-digit
+    fares render as "R$ 4.312" -- dot for thousands, comma for decimals, the
+    inverse of en-US. _price_grounded's {str(n), f"{n:,}"} pair matches
+    neither, so every expensive itinerary would be dropped as hallucinated:
+    silent data loss that looks exactly like a successful empty extraction."""
+    from backend.sources.kayak import KayakSource
+
+    body = "TAP AIR PORTUGAL\nR$ 4.312\n10h 25m\nSelecionar\n"
+    kept = KayakSource._validate([{"airline": "TAP", "flight_number": "TP 88", "price": 4312.0}], body)
+    assert len(kept) == 1
+
+
+async def test_validate_keeps_row_whose_price_uses_comma_decimals():
+    from backend.sources.kayak import KayakSource
+
+    body = "SWISS\nR$ 4.312,00\n18h 10m\nSelecionar\n"
+    kept = KayakSource._validate([{"airline": "LX", "flight_number": "LX 93", "price": 4312.0}], body)
+    assert len(kept) == 1
+
+
 async def test_validate_drops_non_positive_price():
     from backend.sources.kayak import KayakSource
 
