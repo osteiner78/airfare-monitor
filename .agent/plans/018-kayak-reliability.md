@@ -224,9 +224,15 @@ patch), plus the capture harness without which no experiment is
 interpretable. Out of scope: running the experiment (Phase 3).
 
 ### Tasks
-2.1 `Dockerfile`: add `xvfb` so Chromium can run headful. Container already
-    has `shm_size: 1gb` and a 1.5G limit with ~150MB in use, so the headroom
-    is there.
+2.1 ~~`Dockerfile`: add `xvfb`~~ — **already satisfied, verified 2026-08-05**:
+    `playwright install --with-deps chromium` (Phase 5 of plan 017) already
+    pulled it in, `which Xvfb` → `/usr/bin/Xvfb`. **No Dockerfile change and
+    no image rebuild are needed for this**, which removes most of the restart
+    risk this phase was flagged for. Container already has `shm_size: 1gb`
+    and a 1.5G limit with ~150MB in use, so the headroom is there.
+    What is missing is only that Xvfb is never *started* and `DISPLAY` is
+    unset — see 2.2. Confirmed empirically: a headful launch in the container
+    today exits with code 1.
 2.2 `docker-compose.yml`: `DISPLAY=:99`; start Xvfb alongside uvicorn (a
     tiny entrypoint script, or `xvfb-run`). Must not break `--reload`.
 2.3 Swap `playwright` for `rebrowser-playwright` in `requirements.txt`
@@ -248,6 +254,15 @@ interpretable. Out of scope: running the experiment (Phase 3).
 2.6 A small runner script (not a pytest) that performs N attempts at a given
     spacing against a **throwaway route**, writing samples via 2.4 — this is
     what Phase 3 actually executes.
+2.7 **Memoize the derived user agent.** Phase 1's `_render` launches a
+    throwaway headless Chromium on *every* attempt purely to read
+    `navigator.userAgent`, then launches the real browser — two Chromium
+    launches per render. The UA cannot change until the image is rebuilt, so
+    cache it at module level after the first probe. This is not
+    micro-optimisation: the `Connection closed while reading from the driver`
+    crash has now fired **twice** (2026-08-04 23:08, 2026-08-05 03:37, each
+    leaving a ~190MB core dump), and doubling the process spawns doubles the
+    exposure to whatever tears those workers down.
 
 ### Files
 - Modify: `Dockerfile`, `docker-compose.yml`, `requirements.txt`,
