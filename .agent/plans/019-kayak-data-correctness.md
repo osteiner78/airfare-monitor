@@ -58,12 +58,15 @@ any row, in any of the 9 bodies.**
    See "The identity problem" below for why, and for the cost. **This
    requires user sign-off before Phase 2 starts** — it is the third
    `flight_key` format change and carries a 165,574-row backfill.
-3. **Latency tail: accept and observe, do not raise the cap.** One of six
-   thinking-disabled runs hit 32s against `_LLM_TIMEOUT_S = 30`; the other
-   five were 3.5-4.7s. That profile says proxy queueing, not a budget that
-   is too small — raising the cap would mostly lengthen the bad case. It
-   already degrades gracefully. Revisit only if the confirmation run
-   (Phase 3) shows it is not rare.
+3. ~~**Latency tail: accept and observe, do not raise the cap.**~~
+   **FALSIFIED 2026-08-05 by Phase 3.** This read 018's tail as proxy
+   queueing and concluded a larger budget "would mostly lengthen the bad
+   case". The real mechanism is that opencode's Zen proxy honours
+   `thinking: disabled` only ~3 times in 10 — identical requests returned
+   452 tokens in 4.6s and 3,706 in 24.6s. 018's three fast runs were a lucky
+   draw, and under the real mechanism extra budget *does* convert failures
+   into successes. Superseded by **Phase 3b**, which attacks the mechanism
+   (a model with no thinking mode) before considering the cap.
 4. **Scope discipline.** This plan makes Kayak's data trustworthy. It does
    **not** improve extraction coverage, add per-result expansion, or touch
    the evasion bundle, which is settled.
@@ -313,6 +316,76 @@ attempts.
 
 ### Verification
 Results table in `.agent/reports/019-phase-3.md`, one row per attempt.
+
+---
+
+## Phase 3b — Extraction model benchmark (offline, zero Kayak requests)
+
+### Intent
+Phase 3 passed 3 of 4 criteria; the failure was extraction at 2/5, entirely
+from `TimeoutError` after a successful render and a passed currency check.
+Diagnosed: opencode's Zen proxy honours `thinking: disabled` only ~3 times in
+10, non-deterministically — identical back-to-back requests returned 452
+tokens in 4.6s and 3,706 tokens in 24.6s.
+
+**Decision 3 is falsified.** It read 018's tail as proxy queueing and
+concluded a larger budget "would mostly lengthen the bad case"; 018's three
+fast runs were a lucky draw. Under the real mechanism extra budget converts
+failures into successes.
+
+But the four options the Phase 3 report lists — raise the cap, retry once,
+change provider, accept ~40% — all leave the system depending on a flag
+being honoured. **A model with no thinking mode cannot have the flag
+ignored.** That removes the mechanism rather than managing it, which is why
+this phase comes before any cap change.
+
+### Tasks
+3b.1 **Verify the candidate model IDs against the provider's live model
+     list.** opencode Zen advertises several free models (Mimo v2.5,
+     Laguna S 2.1, Ling-3.0-flash, LongCat-2.0, Nemotron 3 Ultra, North Mini
+     Code as of 2026-08-05). Do not take those names, or any capability
+     claim about them, from a webpage summary or from memory — plan 018's
+     `rebrowser-playwright`/`deepseek-v4-flash` corrections both came from
+     exactly that mistake. Confirm each ID with a real call before
+     benchmarking it.
+3b.2 **Replay harness, offline.** 18 captured bodies sit in
+     `data/kayak-samples/`. Replay a fixed subset (≥5 distinct bodies) ×10
+     runs against each candidate. Zero Kayak requests, so this is cheap and
+     repeatable.
+3b.3 **Measure per run:** wall-clock latency, completion tokens (the tell
+     for whether reasoning is active), and correctness — row count, every
+     price grounded in the body, canonical timestamps, first-carrier
+     airline. Report p50 **and max**, not just the mean: the whole problem
+     is the tail.
+3b.4 **Decision rule.** Prefer the model whose *worst* observed latency fits
+     inside the current 30s cap with every run extracting correctly. If none
+     does, prefer the tightest tail and raise the cap to fit it — that is a
+     defensible cap change because it follows a measured distribution rather
+     than a guess. Tie-break on determinism across repeated runs of the same
+     body.
+3b.5 **A hard cap stays regardless of which model wins.** One draw in ten
+     hung for 300s; nothing here justifies an unbounded call.
+
+### Files
+- New: benchmark script under `scripts/`
+- Modify: `backend/sources/kayak.py` (`_LLM_MODEL`, and `_LLM_TIMEOUT_S` only
+  if 3b.4 says so)
+
+### What NOT to touch
+- The evasion bundle, the currency picker mechanism, `make_flight_key`. All
+  three are measured and settled.
+- The extraction *prompt* — changing it mid-benchmark makes the models
+  incomparable. If the prompt needs work, that is separate.
+
+### Success criteria
+A recorded latency distribution and correctness score per candidate, and a
+model choice justified by that table rather than by preference.
+
+### Verification
+Results table in `.agent/reports/019-phase-3b.md`, one row per model.
+Then re-run Phase 3's confirmation (3-5 live attempts) to confirm the
+extraction rate actually moves — the benchmark measures the LLM in
+isolation, not the pipeline.
 
 ---
 
