@@ -391,6 +391,35 @@ isolation, not the pipeline.
 
 ## Phase 4 — Promote
 
+### 4.0 Prerequisite — ship `_time_grounded` into `_validate`
+
+Phase 3b introduced a correctness check the plan had not named, and it
+**decided the benchmark outcome**: a clock time extracted from the page must
+appear in the rendered body in its 12-hour form. Kayak prints `12:30 am`;
+several candidates read it as 12:30 pm, which parses, survives
+`_canonical_timestamp`, and grounds its price — yet yields
+`…|2026-10-04T12:30:00|…` instead of `…T00:30:00|…`, i.e. **a second
+flight_key for one physical flight**. That is precisely the defect Phase 2
+exists to prevent, arriving through a field nobody was checking. It
+disqualified `longcat-2.0-free` (22% misread, majority-wrong on 3 of 5
+bodies) despite it having the tightest tail measured.
+
+**But `_time_grounded` lives only in `scripts/kayak_model_benchmark.py`.**
+Production `_validate` still checks prices and nothing else, so the winning
+model's own residual 2% misread rate is unguarded. At a ~3h cadence that is
+roughly one phantom identity every day or two, each fragmenting a real
+flight's series.
+
+Port it next to `_price_grounded` in `_validate`: same shape, same
+drop-and-log-at-WARNING behaviour, same file. It is already validated across
+200 benchmark runs and 25 live rows. Do this **before** re-enabling Kayak on
+tracker 20 — promotion without it ships a known 2% corruption rate into the
+data this plan exists to make trustworthy.
+
+Test: `test_validate_drops_row_whose_clock_time_is_absent_from_rendered_text`.
+
+### Promotion proper
+
 Only after Phase 3. Re-enable Kayak on tracker 20, then close plan 017's
 Phase 6: tasks 6.3 (best_source reflects the genuinely cheapest source),
 6.4 (Kayak failing while the main sources succeed leaves the displayed price
