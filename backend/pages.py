@@ -468,6 +468,7 @@ async def _build_detail_context(tracker_id: int) -> dict:
 
     chart_datasets = {
         key: {
+            "flight_key": key,
             "label": _label_for_key(key),
             "color": all_chart_colors[key],
             "data": history_by_key.get(key, []),

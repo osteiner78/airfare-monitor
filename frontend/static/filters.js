@@ -98,6 +98,18 @@
         });
         var chartSurvivors = topSurvivors.concat(stickyExtras);
 
+        // Sticky flights entirely absent from allFlights -- i.e. not in the
+        // current snapshot at all, not just filtered out -- can never survive
+        // the allFlights-derived logic above, since allFlights only carries
+        // current, non-missing flights. Fall back to the server's own chart
+        // datasets for those, so an all-time-low fare that dropped out of the
+        // current snapshot (e.g. a source that hasn't run again) doesn't
+        // vanish from the chart the moment this script runs.
+        var presentKeys = new Set(allFlights.map(function (f) { return f.flight_key; }));
+        var missingStickyDatasets = (window.chartData || []).filter(function (ds) {
+            return stickySet.has(ds.flight_key) && !presentKeys.has(ds.flight_key);
+        });
+
         var currency = window.chartCurrency || "";
         var trackerId = window.trackerId;
 
@@ -143,7 +155,13 @@
                 color: COLORS[i % COLORS.length],
                 data: (f.data || []).map(function (pt) { return { x: pt.x, y: pt.y }; }),
             };
-        });
+        }).concat(missingStickyDatasets.map(function (ds) {
+            return {
+                label: ds.label,
+                color: ds.color,
+                data: (ds.data || []).map(function (pt) { return { x: pt.x, y: pt.y }; }),
+            };
+        }));
 
         if (typeof window.renderPriceChart === "function") {
             window.renderPriceChart(datasets);

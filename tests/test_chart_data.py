@@ -104,6 +104,40 @@ async def test_chart_datasets_limited_to_sticky_top_n(client):
     assert '"label": "Vueling 6201"' in response.text
 
 
+@pytest.mark.asyncio
+async def test_chart_dataset_carries_flight_key_for_a_sticky_flight_missing_from_the_latest_snapshot(client):
+    # snapshot 1 has flight A alone, so it's sticky (rank 1 of 1); snapshot 2
+    # replaces it with flight B, so A is "missing" from window.allFlights.
+    # filters.js needs A's flight_key on its window.chartData entry to be able
+    # to recognise and keep charting it once it's no longer in allFlights.
+    from backend.db import create_snapshot, insert_flight_prices
+    await client.post("/api/trackers", json={
+        "origin": "GVA", "destination": "BCN", "depart_date": "2026-09-15",
+    })
+    snap1 = await create_snapshot(1, results_count=1)
+    await insert_flight_prices(snap1["id"], 1, [{
+        "flight_key": "test|VY|6201|2026-01-01T00:00:00",
+        "source": "test", "price": 100.0, "currency": "EUR",
+        "airline": "Vueling", "flight_number": "6201",
+        "departure_time": "2026-01-01T10:00:00",
+        "arrival_time": "2026-01-01T12:00:00",
+        "duration_min": 120, "stops": 0,
+    }])
+    snap2 = await create_snapshot(1, results_count=1)
+    await insert_flight_prices(snap2["id"], 1, [{
+        "flight_key": "test|LH|400|2026-01-02T00:00:00",
+        "source": "test", "price": 120.0, "currency": "EUR",
+        "airline": "Lufthansa", "flight_number": "400",
+        "departure_time": "2026-01-02T08:00:00",
+        "arrival_time": "2026-01-02T10:00:00",
+        "duration_min": 120, "stops": 0,
+    }])
+    response = await client.get("/trackers/1")
+    chart_data = _extract_js_global(response.text, "chartData")
+    keys = {ds.get("flight_key") for ds in chart_data}
+    assert "test|VY|6201|2026-01-01T00:00:00" in keys
+
+
 # --- NEW-BEHAVIOR (plan 009): chart datasets carry a server-assigned color ---
 
 @pytest.mark.asyncio
