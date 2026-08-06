@@ -504,8 +504,13 @@ async def test_validate_keeps_row_whose_price_uses_dot_thousands_separator():
 async def test_validate_keeps_row_whose_price_uses_comma_decimals():
     from backend.sources.kayak import KayakSource
 
+    # Fixture adapted for plan 020 Phase 2: _validate now also grounds the
+    # airline against the page. The row previously carried the IATA code "LX"
+    # while the body prints the full name "SWISS", so it would be dropped for
+    # a reason unrelated to what this test checks (comma-decimal price
+    # parsing). The assertion is unchanged.
     body = "SWISS\nR$ 4.312,00\n18h 10m\nSelecionar\n"
-    kept = KayakSource._validate([{"airline": "LX", "flight_number": "LX 93", "price": 4312.0}], body)
+    kept = KayakSource._validate([{"airline": "SWISS", "flight_number": "LX 93", "price": 4312.0}], body)
     assert len(kept) == 1
 
 
@@ -526,12 +531,20 @@ async def test_validate_drops_price_wildly_outside_the_band_of_other_rows():
     number, a mileage total, an airport code run together) but is not a fare."""
     from backend.sources.kayak import KayakSource
 
-    body = "€700\nSelect\n€750\nSelect\n€800\nSelect\n99999\n"
+    # Fixture adapted for plan 020 Phase 2: _validate now also grounds the
+    # airline, and the placeholder carriers "A"/"B"/"C"/"D" appeared nowhere
+    # in the body, so every row would be dropped before the outlier logic this
+    # test exists to exercise could run at all. Real names, printed on the
+    # page. The assertion is unchanged.
+    body = (
+        "Iberia\n€700\nSelect\nVueling\n€750\nSelect\n"
+        "Swiss\n€800\nSelect\nRyanair\n99999\n"
+    )
     rows = [
-        {"airline": "A", "flight_number": "A 1", "price": 700.0},
-        {"airline": "B", "flight_number": "B 2", "price": 750.0},
-        {"airline": "C", "flight_number": "C 3", "price": 800.0},
-        {"airline": "D", "flight_number": "D 4", "price": 99999.0},
+        {"airline": "Iberia", "flight_number": "IB 1", "price": 700.0},
+        {"airline": "Vueling", "flight_number": "VY 2", "price": 750.0},
+        {"airline": "Swiss", "flight_number": "LX 3", "price": 800.0},
+        {"airline": "Ryanair", "flight_number": "FR 4", "price": 99999.0},
     ]
     kept = KayakSource._validate(rows, body)
     assert [r["price"] for r in kept] == [700.0, 750.0, 800.0]

@@ -172,6 +172,23 @@ Close the last ungrounded component of `flight_key`.
     keep the first carrier of a comma-joined label such as
     `"Arajet, Iberia"`, since `_first_carrier` already reduces those and the
     substring is genuinely present.
+2.4 **Two pre-existing fixtures in `tests/test_kayak_source.py` were adapted**
+    (2026-08-06, orchestrator-authorised — assertions untouched, inputs only).
+    `test_validate_keeps_row_whose_price_uses_comma_decimals` carried the IATA
+    code `"LX"` against a body printing `"SWISS"`, and
+    `test_validate_drops_price_wildly_outside_the_band_of_other_rows` used
+    placeholder carriers `"A"/"B"/"C"/"D"` present nowhere in its body — under
+    airline grounding every row would drop before the outlier logic that test
+    exists to exercise could run. Same repair as plan 019 Phase 1 made to
+    `_sample_body()` for the currency precondition: a new precondition, not a
+    weakened test.
+
+    **The `"LX"` vs `"SWISS"` case is not just a fixture artefact — it is a
+    live production risk this conflict surfaced.** If the model returns an
+    IATA code where the page prints a full name, airline grounding will drop a
+    legitimate row. That substitution is demonstrated behaviour, not
+    hypothetical: plan 017 Phase 6 saw it return `"AT"` (Royal Air Maroc's
+    code) when asked for a flight number. Phase 3 must watch for it — see 3.5.
 
 ### Files
 - Modify: `backend/sources/kayak.py`
@@ -211,6 +228,14 @@ nothing legitimate was lost to the two new filters.
     task 6.6 did.
 3.4 Spot-check the captured body for placements the start/end rule missed —
     Kayak may format some placements differently from the three seen so far.
+3.5 **Watch for airline grounding dropping legitimate rows** (see 2.4). The
+    tell is a run returning fewer than the usual five rows alongside
+    `WARNING` drops naming the airline. If it happens, the row count falls
+    silently — coverage loss with no error, the worst shape of failure.
+    **The fix is prompt-side** (require the carrier exactly as printed);
+    **do not weaken or carve out the grounding check**, which is the mistake
+    the plan 019 currency work explicitly avoided by refusing rather than
+    guessing.
 
 ### Success criteria
 One clean cycle with adverts absent from stored rows and the real fare still

@@ -666,6 +666,30 @@ class KayakSource:
             )
         return True
 
+    # Kayak's own row label for a multi-carrier self-transfer itinerary
+    # (plan 020 Decision 3 -- verified against the real captured body, 8
+    # occurrences, not a model invention). Treated as unconditionally
+    # trusted rather than substring-matched: unlike a named carrier, this
+    # exact label is Kayak's own generated text for the row, not something
+    # the model could have copied from elsewhere on the page and mis-bound.
+    _TRUSTED_AIRLINE_LABELS = {"multiple airlines"}
+
+    @staticmethod
+    def _airline_grounded(airline, body_text: str) -> bool:
+        """Is this extracted carrier actually printed on the page?
+
+        Closes the last ungrounded third of flight_key
+        (airline|departure_time|arrival_time) -- price and both clock times
+        are already checked, so a fabricated airline could still fork a
+        flight the same way a misread time does. Normalised the same way
+        make_flight_key normalises (casefold, collapse whitespace), so a
+        pure case difference is never treated as a fabrication.
+        """
+        normalized = " ".join(str(airline or "").split()).casefold()
+        if normalized in KayakSource._TRUSTED_AIRLINE_LABELS:
+            return True
+        return normalized in body_text.casefold()
+
     @staticmethod
     def _validate(rows: list[dict], body_text: str) -> list[dict]:
         grounded = []
@@ -682,6 +706,11 @@ class KayakSource:
             ) or not KayakSource._time_grounded(row.get("arrival_time"), body_text):
                 logger.warning(
                     "Dropping Kayak row whose clock time is absent from rendered text: %r", row
+                )
+                continue
+            if not KayakSource._airline_grounded(row.get("airline"), body_text):
+                logger.warning(
+                    "Dropping Kayak row whose airline is absent from rendered text: %r", row
                 )
                 continue
             grounded.append(row)
