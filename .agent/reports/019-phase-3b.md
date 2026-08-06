@@ -4,9 +4,12 @@
 `_LLM_TIMEOUT_S` goes 30s → 60s. The choice removes the mechanism rather than
 managing it — mimo emitted 509 or 523 completion tokens on all 50 runs, two
 values and never a reasoning burst, so Zen's unreliable `thinking: disabled`
-has nothing to ignore.**
+has nothing to ignore. Confirmed live afterwards: extraction went 2/5 → 5/5 on
+the same route, same IP, with the model as the only changed variable.**
 
-Zero Kayak requests. Zero DB writes. No tracker touched, no scheduler run, and
+The benchmark itself cost zero Kayak requests; the live confirmation that
+follows it cost 5, on a throwaway route. Zero DB writes throughout, no tracker
+touched, no scheduler run, and
 the extraction prompt is byte-identical to the shipped one (verified, see
 "Prompt parity"). Every input was a body already sitting in
 `data/kayak-samples/`.
@@ -208,25 +211,59 @@ $ docker exec airfare-monitor pytest tests/ -q -k "not slow"
 
 ---
 
-## Not done, deliberately
+## The live confirmation run — 5/5
 
-**The live re-run.** The plan's Phase 3b verification ends with "re-run Phase
-3's confirmation (3–5 live attempts) to confirm the extraction rate actually
-moves — the benchmark measures the LLM in isolation, not the pipeline." The
-instruction for this session scoped it to the offline benchmark ("costs zero
-Kayak requests ... don't touch the extraction prompt or any live tracker"), so
-the live confirmation was not run. **Phase 3b is not closed until it is.**
-The command, unchanged from Phase 3:
+Run separately, after the benchmark and on explicit instruction, because the
+benchmark measures the LLM in isolation and the plan requires the pipeline
+figure. 5 attempts, ~10 min apart, 00:04–00:47 UTC 2026-08-06, route `GRU→LIS`
+depart `2026-10-04`, currency EUR, `top_n=5`, config `019-phase-3b`, egress
+`177.145.72.252` — the same residential IP as Phase 3, so the comparison is
+like-for-like. Runner JSONL:
+`data/kayak-samples/experiment-019-phase-3b-20260806T000403.jsonl`.
+Tracker 20 stayed `kayak_enabled=0`; all 15 trackers were still 0 afterwards.
+No DB rows written.
 
-```bash
-docker exec airfare-monitor python scripts/kayak_experiment.py \
-    --attempts 5 --spacing-minutes 10 --origin GRU --dest LIS \
-    --date 2026-10-04 --config-id 019-phase-3b
+| # | time UTC | blocked | currency | body_len | select | extr | valid | outcome | elapsed_s |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | 00:04:03 | no | EUR | 20557 | 51 | 5 | 5 | extracted | 44.04 |
+| 2 | 00:14:47 | no | EUR | 20557 | 51 | 5 | 5 | extracted | 40.77 |
+| 3 | 00:25:28 | no | EUR | 20568 | 51 | 5 | 5 | extracted | 31.64 |
+| 4 | 00:36:00 | no | EUR | 20450 | 51 | 5 | 5 | extracted | 37.01 |
+| 5 | 00:46:37 | no | EUR | 20450 | 51 | 5 | 5 | extracted | 36.10 |
+
+```
+attempts                 : 5
+rendered a results page  : 5
+blocked (markers/struct) : 0
+currency mismatch        : 0
+full success (extracted) : 5
+elapsed                  : 31.6-44.0s  (vs 32.8-61.0s in Phase 3)
 ```
 
-Expected from the benchmark: ~47/50 → roughly 5/5 extractions where Phase 3 got
-2/5. If the live rate does not move, the difference is in the pipeline, not the
-model.
+**Extraction: 2/5 → 5/5.** That is the criterion Phase 3 failed, and it is the
+only thing this run was for. Against the two baselines:
+
+| | 018 | 019 Phase 3 | 019 Phase 3b |
+|---|---|---|---|
+| rendered | 9/10 | 5/5 | **5/5** |
+| blocked | 0/10 | 0/5 | **0/5** (0/25 cumulative) |
+| full extraction | 4/9 | **2/5** | **5/5** |
+| currency correct | 0/9 | 5/5 | **5/5** |
+
+Every clock time in every stored key is grounded in its own rendered body
+(`_time_grounded` over all 25 rows) — the am/pm misread that disqualified
+`longcat-2.0-free` did not occur live.
+
+Two variations appeared, and both were checked rather than assumed:
+
+- **`gol|…T22:10:00|…T21:45:00` moved €498 → €497 on attempt 5.** Real: that
+  body contains `€497` and no `€498`, attempt 4's contains `€498` and no `€497`.
+  Same key, new point — one continuous series, the intended behaviour.
+- **The fifth row differs between attempts 1-3 and 4-5** (`azul` 14:10→14:10 vs
+  `royal air maroc` 00:30→22:50). Both itineraries are present in both bodies
+  and both are priced €552, so this is a tie broken differently at the top-5
+  cutoff, not an identity fork. Four of five keys are byte-identical across all
+  five attempts.
 
 ---
 
@@ -252,7 +289,6 @@ model.
 
 ## Follow-ups, not done
 
-- **The live confirmation run** (above) — the one thing that closes this phase.
 - **mimo's 2% am/pm misread.** A prompt change is the obvious fix and is out of
   scope here by construction ("changing it mid-benchmark makes the models
   incomparable").
@@ -274,5 +310,11 @@ tail" is read as "tightest tail among the correct", which the plan's own
 observed run with only ~2% headroom, and 50 samples is a thin basis for a tail
 estimate.
 
-**needs-review** on whether Phase 3b can be considered complete without the
-live re-run. It cannot, in my reading.
+**certain** that the live rate moved: 5/5 against Phase 3's 2/5 on the same
+route, same IP, same spacing, with the model as the only changed variable.
+Five attempts is a small sample — it cannot distinguish "5/5" from "94%", which
+is what the benchmark's 47/50 predicts — but it is the same sample size Phase 3
+failed on.
+
+**Phase 3b is complete**, both halves of its Verification satisfied. Phase 4
+(promotion) is unblocked as far as this plan is concerned.
