@@ -614,6 +614,117 @@ async def test_search_reports_dropped_row_count_when_some_rows_survive_validatio
     assert source.last_error_level == "WARNING"
 
 
+# --- grounding: extracted clock times must exist in the rendered text too
+# (plan 019 task 4.0). The plan names only the first test below; the rest pin
+# the two decisions porting _time_grounded out of the benchmark forced --
+# what to do with an unparseable time, and with a page written in 24h. ---
+
+def _twelve_hour_body() -> str:
+    """The real shape of a Kayak row, from data/kayak-samples/: the departure
+    that several extraction models read as 12:30 PM."""
+    return (
+        "12:30 am – 5:40 pm\nRoyal Air Maroc\n1 stop\nCMN\n13h 10m\n"
+        "GRU\n-\nLIS\n$554\nEconomy Cabin\nSelect\n"
+    )
+
+
+async def test_validate_drops_row_whose_clock_time_is_absent_from_rendered_text():
+    """A 12:30 am departure misread as 12:30 pm parses, canonicalises and
+    grounds its price -- and both times are two thirds of the identity key, so
+    it becomes a second flight_key for one physical flight. That is the defect
+    plan 019 Phase 2 exists to remove, arriving through the one field
+    _validate did not check (measured at ~2% of runs, plan 019 Phase 3b)."""
+    from backend.sources.kayak import KayakSource
+
+    rows = [
+        {"airline": "Royal Air Maroc", "price": 554.0,
+         "departure_time": "2026-10-04T00:30:00", "arrival_time": "2026-10-04T17:40:00"},
+        {"airline": "Royal Air Maroc", "price": 554.0,
+         "departure_time": "2026-10-04T12:30:00", "arrival_time": "2026-10-04T17:40:00"},
+    ]
+    kept = KayakSource._validate(rows, _twelve_hour_body())
+
+    assert [r["departure_time"] for r in kept] == ["2026-10-04T00:30:00"]
+
+
+async def test_validate_drops_row_whose_arrival_time_is_absent_from_rendered_text():
+    """Both times are part of the key, so both have to be checked -- an
+    arrival-only misread forks the flight exactly the same way."""
+    from backend.sources.kayak import KayakSource
+
+    rows = [{"airline": "Royal Air Maroc", "price": 554.0,
+             "departure_time": "2026-10-04T00:30:00", "arrival_time": "2026-10-04T05:40:00"}]
+
+    assert KayakSource._validate(rows, _twelve_hour_body()) == []
+
+
+async def test_validate_keeps_row_whose_timestamp_cannot_be_parsed():
+    """_canonical_timestamp deliberately stores an unparseable value rather
+    than dropping the row; this check is aimed at the misread, not at making
+    parsing mandatory, so it must not quietly reverse that."""
+    from backend.sources.kayak import KayakSource
+
+    rows = [{"airline": "Royal Air Maroc", "price": 554.0,
+             "departure_time": "tomorrow morning", "arrival_time": ""}]
+
+    assert len(KayakSource._validate(rows, _twelve_hour_body())) == 1
+
+
+async def test_validate_grounds_clock_times_against_a_24_hour_page():
+    """Kayak force-redirects by egress geography (plan 018), and a pt-BR page
+    prints 00:30 rather than 12:30 am. Demanding the 12-hour form there would
+    drop every row of a perfectly good page -- the same silent data loss
+    _price_grounded's dot-thousands fallback exists to prevent."""
+    from backend.sources.kayak import KayakSource
+
+    body = "00:30 – 17:40\nRoyal Air Maroc\n1 parada\n13h 10m\nR$ 4.312\nSelecionar\n"
+    rows = [
+        {"airline": "Royal Air Maroc", "price": 4312.0,
+         "departure_time": "2026-10-04T00:30:00", "arrival_time": "2026-10-04T17:40:00"},
+        {"airline": "Royal Air Maroc", "price": 4312.0,
+         "departure_time": "2026-10-04T12:30:00", "arrival_time": "2026-10-04T17:40:00"},
+    ]
+    kept = KayakSource._validate(rows, body)
+
+    assert [r["departure_time"] for r in kept] == ["2026-10-04T00:30:00"]
+
+
+async def test_validate_does_not_ground_times_against_a_page_printing_none():
+    """A body carrying no recognisable clock time grounds nothing, so it is no
+    evidence against a row -- same abstention as _looks_blocked_structurally
+    refusing to call a long, button-less page blocked."""
+    from backend.sources.kayak import KayakSource
+
+    rows = [{"airline": "TAP AIR PORTUGAL", "price": 785.0,
+             "departure_time": "2026-08-21T00:45:00", "arrival_time": "2026-08-21T22:30:00"}]
+
+    assert len(KayakSource._validate(rows, _sample_body())) == 1
+
+
+async def test_search_drops_row_whose_clock_time_is_hallucinated():
+    """End-to-end: the time check must actually be wired into search(), not
+    just exist as a testable helper."""
+    from backend.sources.kayak import KayakSource
+
+    body = "English\n€\nEuro\nFeedback\n" + _twelve_hour_body()
+    rows = [
+        {"airline": "Royal Air Maroc", "flight_number": None, "price": 554.0,
+         "departure_time": "2026-10-04T00:30:00", "arrival_time": "2026-10-04T17:40:00",
+         "duration_min": 790, "stops": 1},
+        {"airline": "Royal Air Maroc", "flight_number": None, "price": 554.0,
+         "departure_time": "2026-10-04T12:30:00", "arrival_time": "2026-10-04T17:40:00",
+         "duration_min": 310, "stops": 1},
+    ]
+
+    source = KayakSource()
+    with patch.object(source, "_render", AsyncMock(return_value=body)), \
+         patch.object(source, "_extract", AsyncMock(return_value=rows)):
+        results = await source.search("GRU", "LIS", "2026-10-04", None, "EUR", 5)
+
+    assert [r.departure_time for r in results] == ["2026-10-04T00:30:00"]
+    assert source.last_error_level == "WARNING"
+
+
 # --- secret hygiene ---
 
 async def test_error_message_does_not_contain_api_key(monkeypatch):

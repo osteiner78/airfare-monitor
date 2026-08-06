@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import random
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -118,6 +119,13 @@ _MIN_RESULTS_PAGE_CHARS = 2000
 # contract) are mapped -- GBP/CHF haven't been seen in Kayak's real header
 # text, so an unrecognised marker returns None (refuse) rather than
 # guessing their spelling.
+# Which clock convention the rendered page is written in decides which form
+# _time_grounded has to find. The 12-hour probe runs first and wins: on a page
+# printing "12:30 am", a bare "12:30" lookup would match that very line and
+# wave through the pm misread this check exists to catch.
+_TWELVE_HOUR_TIME_RE = re.compile(r"\d{1,2}:\d{2}\s?[ap]m")
+_ANY_CLOCK_TIME_RE = re.compile(r"\d{1,2}:\d{2}")
+
 _CURRENCY_MARKERS: dict[str, tuple[str, str]] = {
     "USD": ("$", "united states dollar"),
     "EUR": ("€", "euro"),
@@ -571,6 +579,54 @@ class KayakSource:
         return any(rep in body_text for rep in representations)
 
     @staticmethod
+    def _time_grounded(value, body_text: str) -> bool:
+        """Is this extracted clock time actually printed on the page?
+
+        Ported from scripts/kayak_model_benchmark.py, where it decided the
+        Phase 3b benchmark (plan 019 task 4.0). Kayak renders the cheapest
+        GRU-LIS itinerary as "12:30 am - 5:40 pm" and a model reading that
+        departure as 12:30 pm produces a value that parses, survives
+        _canonical_timestamp and grounds its price -- yet both times are two
+        thirds of the identity key, so it is a second flight_key for one
+        physical flight. That is the defect Phase 2 exists to remove, arriving
+        through the one field nothing checked. The winning model still misreads
+        ~2% of runs, which at a 3h cadence is a phantom identity every day or
+        two.
+
+        Two deliberate abstentions, both of the same kind as
+        _looks_blocked_structurally's "a long page with no recognised button is
+        not a block": an unparseable value is KEPT (matching
+        _canonical_timestamp, which stores such a row rather than dropping it
+        -- this check is aimed at the misread, not at making parsing
+        mandatory), and a body printing no recognisable clock time at all
+        grounds nothing, since there is nothing to check against.
+        """
+        try:
+            parsed = datetime.fromisoformat(str(value or "").strip())
+        except ValueError:
+            return True
+
+        lowered = body_text.lower()
+        if _TWELVE_HOUR_TIME_RE.search(lowered):
+            hour12 = parsed.hour % 12 or 12
+            meridiem = "am" if parsed.hour < 12 else "pm"
+            return f"{hour12}:{parsed.minute:02d} {meridiem}" in lowered
+        if _ANY_CLOCK_TIME_RE.search(lowered):
+            # Only reached when the page prints no am/pm anywhere, i.e. a
+            # force-redirect to a 24-hour locale (pt-BR/de-CH), where
+            # demanding the 12-hour form would drop every row of a perfectly
+            # good page -- the same silent data loss _price_grounded's
+            # dot-thousands fallback exists to prevent.
+            return any(
+                form in lowered
+                for form in (
+                    f"{parsed.hour:02d}:{parsed.minute:02d}",
+                    f"{parsed.hour}:{parsed.minute:02d}",
+                )
+            )
+        return True
+
+    @staticmethod
     def _validate(rows: list[dict], body_text: str) -> list[dict]:
         grounded = []
         for row in rows:
@@ -580,6 +636,13 @@ class KayakSource:
                 continue
             if not KayakSource._price_grounded(price, body_text):
                 logger.warning("Dropping Kayak row whose price is absent from rendered text: %r", row)
+                continue
+            if not KayakSource._time_grounded(
+                row.get("departure_time"), body_text
+            ) or not KayakSource._time_grounded(row.get("arrival_time"), body_text):
+                logger.warning(
+                    "Dropping Kayak row whose clock time is absent from rendered text: %r", row
+                )
                 continue
             grounded.append(row)
 
