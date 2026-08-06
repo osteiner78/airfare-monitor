@@ -203,6 +203,40 @@ def _looks_blocked_structurally(body_text: str) -> bool:
     return not any(marker.lower() in lowered for marker in _RESULT_MARKERS)
 
 
+_PLACEMENT_START_MARKER = "This is a paid placement from"
+_PLACEMENT_END_MARKER = "View Deal"
+
+
+def _strip_placements(body_text: str) -> str:
+    """Remove paid-placement blocks before the model ever sees them (plan 020
+    Decision 1) -- a prompt instruction is a request, removing the text is a
+    guarantee. A block starts at the line carrying the disclosure sentence
+    and ends at the next 'View Deal' line, inclusive.
+
+    The end search deliberately starts on the line AFTER the disclosure
+    line, not on it: the disclosure line itself always ends with its own
+    'View Deal' (its price sits inline), so anchoring there would strip only
+    that one line and leave the block's other standalone price repeats
+    behind -- exactly the €806 defect this exists to fix.
+    """
+    if _PLACEMENT_START_MARKER not in body_text:
+        return body_text
+
+    lines = body_text.split("\n")
+    kept = []
+    i = 0
+    while i < len(lines):
+        if _PLACEMENT_START_MARKER in lines[i]:
+            end = i + 1
+            while end < len(lines) and _PLACEMENT_END_MARKER not in lines[end]:
+                end += 1
+            i = end + 1 if end < len(lines) else i + 1
+            continue
+        kept.append(lines[i])
+        i += 1
+    return "\n".join(kept)
+
+
 def _results_section(body_text: str, max_results: int) -> str:
     """The slice of the rendered body carrying the first `max_results`
     itineraries.
@@ -223,6 +257,7 @@ def _results_section(body_text: str, max_results: int) -> str:
     if max_results <= 0:
         return body_text
 
+    body_text = _strip_placements(body_text)
     lines = body_text.split("\n")
     marker_lines = [
         i for i, line in enumerate(lines) if line.strip().lower() in _RESULT_MARKERS_LOWER
@@ -391,7 +426,12 @@ class KayakSource:
                 self.last_error_level = "WARNING"
                 return []
 
-            rows = await self._extract(body_text, top_n, depart_date)
+            # Stripped at the call site, not only inside _results_section:
+            # _extract is the seam a caller could mock or reimplement, and
+            # the guarantee (Decision 1) has to hold regardless of what runs
+            # inside it. Grounding below still uses the unstripped body_text
+            # (task 1.4).
+            rows = await self._extract(_strip_placements(body_text), top_n, depart_date)
             record["extracted_rows"] = len(rows)
             if not rows:
                 record["outcome"] = "no_flights"
