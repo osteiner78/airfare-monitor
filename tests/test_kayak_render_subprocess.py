@@ -79,7 +79,18 @@ class _FakeProc:
 
 
 def _spawn_returning(proc):
-    """Patch the exec seam and expose the argv it was called with."""
+    """Patch the exec seam and expose the argv it was called with.
+
+    The seam is `backend.sources.kayak._spawn_render_worker`, not
+    `asyncio.create_subprocess_exec`. Under uvloop -- which is what the ASGI
+    worker actually runs -- `create_subprocess_exec` is libuv's fork-based
+    `uv_spawn`, and this process cannot survive a fork: the child segfaults
+    finalising an inherited curl_cffi handle. That is the very bug plan 021
+    exists to fix, so the production spawn goes through `os.posix_spawn`
+    instead (plan 021 Decision 4, "exec, not fork" -- see
+    `.agent/reports/021-phase-1-rootcause.md`). Only the patch target moved;
+    every assertion below is unchanged.
+    """
     calls = {}
 
     async def _fake_exec(*args, **kwargs):
@@ -93,7 +104,7 @@ def _spawn_returning(proc):
                 proc._writes.setdefault(arg, _BODY)
         return proc
 
-    return patch("asyncio.create_subprocess_exec", _fake_exec), calls
+    return patch("backend.sources.kayak._spawn_render_worker", _fake_exec), calls
 
 
 # --- the happy path ---

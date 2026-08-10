@@ -4,8 +4,11 @@ import logging
 import os
 import random
 import re
+import subprocess
+import sys
+import tempfile
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 
 from backend.kayak_samples import _DEFAULT_SAMPLES_DIR, _SAMPLES_DIR_ENV, capture_sample
@@ -45,6 +48,15 @@ _LLM_TIMEOUT_S = 60.0
 # elapse before the LLM call even starts, so the overall budget must cover
 # both render timeouts in full plus the LLM call, with slack.
 _OVERALL_TIMEOUT_S = 2 * _RENDER_TIMEOUT_S + _LLM_TIMEOUT_S + 30.0
+
+_RENDER_WORKER_MODULE = "backend.sources.kayak_render"
+# The worker performs both render waits in sequence (page.goto's own cap plus
+# _wait_for_results_stable's separate one), so the parent's cap has to clear
+# 2 * _RENDER_TIMEOUT_S with room for interpreter and browser startup. Kept as
+# a factor rather than an added constant so that changing _RENDER_TIMEOUT_S
+# moves both together, and so the whole budget still fits inside
+# _OVERALL_TIMEOUT_S alongside the LLM call.
+_WORKER_TIMEOUT_FACTOR = 2.5
 
 # The first six were written from guesses before any block had been seen and
 # matched NONE of the interstitial Kayak actually served (Phase 6, 2026-08-04)
@@ -337,6 +349,50 @@ async def _simulate_interaction(page) -> None:
     await page.mouse.wheel(0, 400)
 
 
+class _WorkerProcess:
+    """Gives `subprocess.Popen` the slice of the `asyncio.subprocess.Process`
+    surface `_render` needs, running the blocking calls off the event loop."""
+
+    def __init__(self, popen: subprocess.Popen) -> None:
+        self._popen = popen
+
+    @property
+    def returncode(self) -> int | None:
+        return self._popen.returncode
+
+    async def communicate(self) -> tuple[bytes, bytes]:
+        return await asyncio.to_thread(self._popen.communicate)
+
+    def kill(self) -> None:
+        self._popen.kill()
+
+    async def wait(self) -> int:
+        return await asyncio.to_thread(self._popen.wait)
+
+
+async def _spawn_render_worker(*argv: str) -> _WorkerProcess:
+    """Spawn the render worker WITHOUT forking.
+
+    Not `asyncio.create_subprocess_exec`: under uvloop that is libuv's
+    fork-based `uv_spawn`, and this process cannot survive a fork -- the child
+    segfaults finalising an inherited curl_cffi handle (plan 021 root cause,
+    `.agent/reports/021-phase-1-rootcause.md`). `subprocess.Popen` does not go
+    through the event loop at all, and with an absolute executable, no `cwd`
+    and `close_fds=False` it routes to `os.posix_spawn`, which shares the
+    address space instead of copying it so no finaliser ever runs in a child.
+
+    `close_fds=False` is safe here because Python marks its own descriptors
+    close-on-exec (PEP 446); only explicitly-inheritable ones would pass down.
+    """
+    popen = subprocess.Popen(
+        list(argv),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        close_fds=False,
+    )
+    return _WorkerProcess(popen)
+
+
 class KayakSource:
     def __init__(self, config: KayakRenderConfig | None = None) -> None:
         self.config = config or KayakRenderConfig()
@@ -486,75 +542,43 @@ class KayakSource:
         return any(marker in lowered for marker in _BLOCKED_MARKERS)
 
     async def _render(self, url: str) -> str:
-        from patchright.async_api import async_playwright
+        fd, out_path = tempfile.mkstemp(prefix="kayak-render-", suffix=".txt")
+        os.close(fd)
 
-        config = self.config
-        launch_args = _launch_args(config)
+        argv = (
+            sys.executable,
+            "-m",
+            _RENDER_WORKER_MODULE,
+            url,
+            json.dumps(asdict(self.config)),
+            out_path,
+        )
+        timeout = _WORKER_TIMEOUT_FACTOR * _RENDER_TIMEOUT_S
 
-        async with async_playwright() as p:
-            # The real default UA comes from the browser itself (Decision 4:
-            # derived from the launched build's own version, never
-            # hardcoded). Context creation options can't be changed after the
-            # fact, so this has to resolve before the real context.
-            default_ua = await _probe_default_user_agent(p)
-
-            options = _context_options(config, default_ua)
-            browser_to_close = None
-
-            if config.user_data_dir:
-                context = await p.chromium.launch_persistent_context(
-                    config.user_data_dir,
-                    headless=config.headless,
-                    args=launch_args,
-                    locale=options["locale"],
-                    timezone_id=options["timezone_id"],
-                    viewport=options["viewport"],
-                    user_agent=options["user_agent"],
-                )
-            else:
-                browser = await p.chromium.launch(headless=config.headless, args=launch_args)
-                context = await browser.new_context(
-                    locale=options["locale"],
-                    timezone_id=options["timezone_id"],
-                    viewport=options["viewport"],
-                    user_agent=options["user_agent"],
-                )
-                browser_to_close = browser
-
+        try:
+            proc = await _spawn_render_worker(*argv)
             try:
-                page = context.pages[0] if context.pages else await context.new_page()
+                _, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            except (asyncio.TimeoutError, TimeoutError):
+                # Kill AND reap: plan 020 Phase 3 found 171 orphaned Chromium
+                # processes, which is what killing without waiting produces.
+                proc.kill()
+                await proc.wait()
+                raise RuntimeError(
+                    f"kayak render worker exceeded {timeout:.0f}s and was killed"
+                ) from None
 
-                for warmup_url, dwell in _warmup_sequence(config):
-                    await page.goto(warmup_url, timeout=_RENDER_TIMEOUT_S * 1000)
-                    await asyncio.sleep(dwell)
+            if proc.returncode != 0:
+                detail = (stderr or b"").decode("utf-8", "replace").strip()
+                raise RuntimeError(
+                    f"kayak render worker exited {proc.returncode}: {detail}"
+                )
 
-                await page.goto(url, timeout=_RENDER_TIMEOUT_S * 1000)
-                await self._wait_for_results_stable(page)
-                await _simulate_interaction(page)
-                return await page.inner_text("body")
-            finally:
-                await context.close()
-                if browser_to_close is not None:
-                    await browser_to_close.close()
-
-    @staticmethod
-    async def _wait_for_results_stable(page, cap_seconds: float = _RENDER_TIMEOUT_S) -> None:
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + cap_seconds
-        previous_count = -1
-        stable_polls = 0
-        while loop.time() < deadline:
-            count = 0
-            for marker in _RESULT_MARKERS:
-                count += await page.get_by_text(marker, exact=True).count()
-            if count > 0 and count == previous_count:
-                stable_polls += 1
-                if stable_polls >= 2:
-                    return
-            else:
-                stable_polls = 0
-            previous_count = count
-            await asyncio.sleep(1)
+            with open(out_path, encoding="utf-8") as handle:
+                return handle.read()
+        finally:
+            if os.path.exists(out_path):
+                os.remove(out_path)
 
     async def _extract(self, body_text: str, top_n: int, depart_date: str) -> list[dict]:
         from openai import AsyncOpenAI
