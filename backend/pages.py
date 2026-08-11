@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from backend.db import (
+    DEFAULT_INTERVAL_MINUTES,
     create_tracker,
     delete_tracker,
     get_best_price_series,
@@ -290,6 +291,10 @@ async def add_tracker(request: Request):
         depart_date=form["depart_date"],
         return_date=form.get("return_date") or None,
         top_n=5,
+        # Passed explicitly: the schema's own DEFAULT only applies to
+        # newly created databases, and production's trackers table was
+        # built when the default was still 180.
+        interval_minutes=DEFAULT_INTERVAL_MINUTES,
     )
     await insert_log("INFO", "tracker_created", tracker_id=tracker["id"],
                      message=f"{tracker['origin']} -> {tracker['destination']}")

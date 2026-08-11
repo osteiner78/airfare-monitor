@@ -20,7 +20,7 @@ class TrackerCreate(BaseModel):
     depart_date: str
     return_date: str | None = None
     currency: str = "EUR"
-    interval_minutes: int = 180
+    interval_minutes: int = 60
     top_n: int = 5
 
     @field_validator("depart_date", "return_date")

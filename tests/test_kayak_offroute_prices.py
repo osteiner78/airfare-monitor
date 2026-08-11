@@ -130,3 +130,86 @@ def test_the_original_disclosure_form_still_works():
     out = _strip_placements(body)
     assert "€805" not in out and "€1,406" not in out
     assert "€784" in out and "Select" in out
+
+
+# --- 3. self-transfer hacks (excluded by decision, not by defect) ---
+
+_REAL_SELF_TRANSFER = """Go to result details
+Self-transfer hack
+3:50 am – 5:10 pm+1
+Arajet, Air Europa
+3 stops
+PUJ
+ 3h 06m layover, Punta Cana
+€702
+Select
+Go to next result
+8:45 pm – 5:15 pm+1
+TAP AIR PORTUGAL
+1 stop
+LIS
+€784
+Select"""
+
+
+def test_a_self_transfer_block_is_removed_whole():
+    from backend.sources.kayak import _strip_self_transfer_rows
+
+    out = _strip_self_transfer_rows(_REAL_SELF_TRANSFER)
+    assert "€702" not in out, "the self-transfer fare survived"
+    assert "Arajet" not in out
+    assert "Self-transfer hack" not in out
+    assert "3:50 am – 5:10 pm+1" not in out
+
+
+def test_the_normal_itinerary_below_it_survives():
+    """The block must end at its own 'Select', not run into the next result."""
+    from backend.sources.kayak import _strip_self_transfer_rows
+
+    out = _strip_self_transfer_rows(_REAL_SELF_TRANSFER)
+    assert "€784" in out
+    assert "TAP AIR PORTUGAL" in out
+    assert "8:45 pm – 5:15 pm+1" in out
+
+
+def test_a_body_with_no_self_transfer_rows_is_untouched():
+    from backend.sources.kayak import _strip_self_transfer_rows
+
+    body = "8:45 pm – 5:15 pm+1\nTAP AIR PORTUGAL\n€784\nSelect"
+    assert _strip_self_transfer_rows(body) == body
+
+
+def test_an_unterminated_self_transfer_label_drops_only_its_own_line():
+    from backend.sources.kayak import _strip_self_transfer_rows
+
+    body = "Self-transfer hack\n8:45 pm – 5:15 pm+1\n€784"
+    out = _strip_self_transfer_rows(body)
+    assert "Self-transfer hack" not in out
+    assert "€784" in out, "results were eaten by an unbounded strip"
+
+
+def test_self_transfer_rows_do_not_consume_a_top_n_slot():
+    """Stripping happens before _results_section slices, so removing a block
+    must free the slot for a real itinerary rather than shrink the result set."""
+    from backend.sources.kayak import _results_section
+
+    body = _REAL_SELF_TRANSFER + "\n9:15 pm – 5:10 pm+1\nIberia\n€800\nSelect"
+    section = _results_section(body, 2)
+    assert "€702" not in section
+    assert "€784" in section and "€800" in section
+
+
+def test_the_arrival_side_promo_is_also_stripped():
+    """Kayak has a destination-side variant too. Found 2026-08-11 on GRU-CDG
+    only AFTER the origin-side form was fixed -- the EUR160/EUR734 ORY fares
+    were still reaching a CDG tracker's extraction input."""
+    body = (
+        "Save money\n"
+        "Arrive at nearby ORY and save €160 • 22 mi from CDG\n"
+        "from\n€734\nShow all\n"
+        "6:20 pm – 10:35 am+1\nFinnair\n€894\nSelect"
+    )
+    out = _strip_nearby_airport_promos(body)
+    assert "€160" not in out and "€734" not in out
+    assert "Arrive at nearby" not in out
+    assert "€894" in out and "Finnair" in out

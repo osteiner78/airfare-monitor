@@ -43,20 +43,25 @@ _RENDER_TIMEOUT_S = 45.0
 # The margin over the observed max is thin (~2%); anything past the cap is a
 # lost data point by design (3b.5: a hard cap stays regardless of model).
 _LLM_TIMEOUT_S = 60.0
-# Worst case: page.goto's own timeout (_RENDER_TIMEOUT_S) plus
-# _wait_for_results_stable's separate cap (also _RENDER_TIMEOUT_S) can both
-# elapse before the LLM call even starts, so the overall budget must cover
-# both render timeouts in full plus the LLM call, with slack.
-_OVERALL_TIMEOUT_S = 2 * _RENDER_TIMEOUT_S + _LLM_TIMEOUT_S + 30.0
-
 _RENDER_WORKER_MODULE = "backend.sources.kayak_render"
 # The worker performs both render waits in sequence (page.goto's own cap plus
 # _wait_for_results_stable's separate one), so the parent's cap has to clear
 # 2 * _RENDER_TIMEOUT_S with room for interpreter and browser startup. Kept as
 # a factor rather than an added constant so that changing _RENDER_TIMEOUT_S
-# moves both together, and so the whole budget still fits inside
-# _OVERALL_TIMEOUT_S alongside the LLM call.
+# moves both together.
 _WORKER_TIMEOUT_FACTOR = 2.5
+
+# Derived from the WORKER's cap, not from 2 * _RENDER_TIMEOUT_S. Plan 021
+# Phase 2 moved the render into a subprocess with a 2.5x budget while this
+# line still assumed the old in-process 2x bound, leaving 7.5s of slack
+# instead of 30 -- and that cost a real, fully-rendered page: the 02:37 run on
+# 2026-08-11 read a 19,085-char body in 124s and then lost it to this cap
+# mid-extraction (`outcome: error`, `extracted_rows: 0`). Successful runs take
+# 62-67s, so only the slow tail hits it, which is why it survived Phase 3's
+# verification. Keep this derived: it must always exceed the worst case the
+# two sub-timeouts can actually produce, and `test_kayak_timeout_budget.py`
+# fails if the slack ever narrows again.
+_OVERALL_TIMEOUT_S = _WORKER_TIMEOUT_FACTOR * _RENDER_TIMEOUT_S + _LLM_TIMEOUT_S + 30.0
 
 # The first six were written from guesses before any block had been seen and
 # matched NONE of the interstitial Kayak actually served (Phase 6, 2026-08-04)
@@ -238,9 +243,60 @@ _PLACEMENT_MAX_BLOCK_LINES = 40
 # is not for the route being tracked. Same class of defect as the paid
 # placement -- a real price, printed on the page, belonging to something else --
 # so grounding cannot catch it either. Observed live 2026-08-11 on GRU-ZRH.
-_NEARBY_AIRPORT_START_MARKER = "Depart from nearby"
+# BOTH directions exist: "Depart from nearby VCP and save EUR78" (origin,
+# GRU-ZRH) and "Arrive at nearby ORY and save EUR160" (destination, GRU-CDG,
+# found 2026-08-11 only after the origin form was already fixed). Matching one
+# and assuming the other did not exist is exactly how the EUR160 ORY fare was
+# still reaching a CDG tracker's extraction input.
+_NEARBY_AIRPORT_START_MARKERS = ("Depart from nearby", "Arrive at nearby")
 _NEARBY_AIRPORT_END_MARKER = "Show all"
 _NEARBY_AIRPORT_MAX_BLOCK_LINES = 12
+
+
+# Kayak labels some itineraries "Self-transfer hack": two SEPARATELY TICKETED
+# flights it has stitched together. They are real and genuinely printed, so
+# every guard passes -- but they are a different product from the one this
+# tracker follows. A missed connection is not protected, the legs are booked
+# apart, and because they are usually the cheapest thing on the page they
+# dominate best_price and (permanently, since it is never recomputed)
+# historical_best_price. Observed 2026-08-11: Arajet+Air Europa, 3 stops via
+# PUJ, EUR702 while the cheapest normal fare was EUR784 -- and absent from the
+# user's own kayak.com session entirely. Excluded by decision, not by defect;
+# TODO.md carries surfacing them as an opt-in feature.
+_SELF_TRANSFER_MARKER = "Self-transfer hack"
+# Each itinerary block ends with a result marker ("Select"), so that bounds the
+# span exactly. The cap only guards a page whose structure changed.
+_SELF_TRANSFER_MAX_BLOCK_LINES = 60
+
+
+def _strip_self_transfer_rows(body_text: str) -> str:
+    """Remove whole "Self-transfer hack" itinerary blocks.
+
+    Runs BEFORE _results_section slices, so a removed block does not consume
+    one of the top-N slots the model is asked to read.
+    """
+    if _SELF_TRANSFER_MARKER not in body_text:
+        return body_text
+
+    lines = body_text.split("\n")
+    kept: list[str] = []
+    i = 0
+    while i < len(lines):
+        if _SELF_TRANSFER_MARKER in lines[i]:
+            end = i + 1
+            limit = min(len(lines), i + 1 + _SELF_TRANSFER_MAX_BLOCK_LINES)
+            while end < limit and lines[end].strip().lower() not in _RESULT_MARKERS_LOWER:
+                end += 1
+            if end < limit:
+                i = end + 1
+                continue
+            # No result marker within range: drop only the label line rather
+            # than guessing, exactly as the placement strips do.
+            i += 1
+            continue
+        kept.append(lines[i])
+        i += 1
+    return "\n".join(kept)
 
 
 def _is_placement_start(line: str) -> bool:
@@ -256,14 +312,14 @@ def _strip_nearby_airport_promos(body_text: str) -> str:
     this tracker's route would store a price the user cannot actually book for
     the searched itinerary.
     """
-    if _NEARBY_AIRPORT_START_MARKER not in body_text:
+    if not any(m in body_text for m in _NEARBY_AIRPORT_START_MARKERS):
         return body_text
 
     lines = body_text.split("\n")
     kept: list[str] = []
     i = 0
     while i < len(lines):
-        if _NEARBY_AIRPORT_START_MARKER in lines[i]:
+        if any(m in lines[i] for m in _NEARBY_AIRPORT_START_MARKERS):
             end = i + 1
             limit = min(len(lines), i + 1 + _NEARBY_AIRPORT_MAX_BLOCK_LINES)
             while end < limit and _NEARBY_AIRPORT_END_MARKER not in lines[end]:
@@ -331,7 +387,9 @@ def _results_section(body_text: str, max_results: int) -> str:
     if max_results <= 0:
         return body_text
 
-    body_text = _strip_nearby_airport_promos(_strip_placements(body_text))
+    body_text = _strip_self_transfer_rows(
+        _strip_nearby_airport_promos(_strip_placements(body_text))
+    )
     lines = body_text.split("\n")
     marker_lines = [
         i for i, line in enumerate(lines) if line.strip().lower() in _RESULT_MARKERS_LOWER
@@ -550,7 +608,9 @@ class KayakSource:
             # inside it. Grounding below still uses the unstripped body_text
             # (task 1.4).
             rows = await self._extract(
-                _strip_nearby_airport_promos(_strip_placements(body_text)),
+                _strip_self_transfer_rows(
+                    _strip_nearby_airport_promos(_strip_placements(body_text))
+                ),
                 top_n,
                 depart_date,
             )

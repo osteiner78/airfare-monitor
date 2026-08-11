@@ -8,6 +8,13 @@ def get_db_path() -> str:
     return os.environ.get("AIRFARE_DB_PATH", "data/airfare.db")
 
 
+# Kayak's cadence is gated by this too (scheduler._KAYAK_DUE_MARGIN), so it is
+# the single knob for how often a tracker is refreshed. Lowered 180 -> 60 on
+# 2026-08-11. The floor is ~30: below that the 0-15 min pre-render jitter
+# sleep stops fitting inside one tick, and three Kayak trackers serialized
+# behind one browser profile start overlapping.
+DEFAULT_INTERVAL_MINUTES = 60
+
 _SCHEMA = """
 PRAGMA journal_mode=WAL;
 PRAGMA foreign_keys=ON;
@@ -19,7 +26,7 @@ CREATE TABLE IF NOT EXISTS trackers (
     depart_date TEXT NOT NULL,
     return_date TEXT,
     currency TEXT NOT NULL DEFAULT 'EUR',
-    interval_minutes INTEGER NOT NULL DEFAULT 180,
+    interval_minutes INTEGER NOT NULL DEFAULT 60,
     top_n INTEGER NOT NULL DEFAULT 5,
     active INTEGER NOT NULL DEFAULT 1,
     kayak_enabled INTEGER NOT NULL DEFAULT 0,

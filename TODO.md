@@ -65,6 +65,33 @@
     forever. Either freeze party size after creation, or reset the tracker's
     history when it changes — do not silently mix.
 
+### Self-transfer / "hacker" fares (currently excluded)
+- [ ] **Optionally surface Kayak's "Self-transfer hack" itineraries.** These are
+  two **separately ticketed** flights Kayak stitches together — e.g.
+  `Arajet, Air Europa`, 3 stops via PUJ, €702 on 2026-08-11 while the cheapest
+  normal GRU→ZRH fare was €784. They are genuinely printed on the page and pass
+  every guard, so they were being stored as ordinary flights and, being
+  cheapest, dominated `best_price` and `historical_best_price`. As of
+  2026-08-11 `_strip_self_transfer_rows` removes them before extraction.
+
+  Why they were excluded rather than kept: a missed connection is **not
+  protected** (no through-checked bags, no rebooking), so the price is not
+  comparable to a normal fare, and mixing the two into one all-time low makes
+  the headline number unreachable in practice. They also appear inconsistently
+  in Kayak's own inventory (present 00:43, gone 02:13), and never appeared in
+  the user's own manual searches.
+
+  If surfaced later, they need to stay *distinguishable*, not merged:
+  - A `self_transfer` boolean on `flight_prices`, set by the extractor — not a
+    string sniffed in the UI.
+  - Excluded from `historical_best_price` by default, or that column has to
+    become per-kind. It is `MIN` over all rows and never recomputed, so one
+    stored hacker fare permanently lowers a tracker's all-time low.
+  - A visible badge in the results table plus a filter toggle, defaulting off.
+  - The extraction prompt currently never sees them; re-including them means
+    the model must be asked for the flag explicitly, and `_validate` must
+    ground it like any other field.
+
 ## Future (v2)
 - [ ] **City name autocomplete** — replace raw text inputs with city name search + autocomplete (e.g. type "Barcelona" → suggests BCN). Needs an airport/city dataset.
 - [ ] **Multicurrency** — Allow showing prices in any currency
