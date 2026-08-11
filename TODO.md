@@ -65,6 +65,51 @@
     forever. Either freeze party size after creation, or reset the tracker's
     history when it changes — do not silently mix.
 
+### Fare brand + baggage comparability
+- [ ] **Capture the fare brand, and constrain the search rather than parsing
+  baggage.** Investigated 2026-08-11 against real data from both sources.
+
+  **What exists:**
+  - **Kayak** prints a fare brand per row — `Light`, `Basic`, `Economy Light`,
+    `Economy Lite`, `Economy`, `Light + Economy Cabin` — right next to each
+    price. It does **not** print a baggage allowance per row; the only bag text
+    on the page is the *filter sidebar* ("Carry-on bag", "Checked bag") plus
+    the disclaimer *"Prices are per person and do not include baggage fees."*
+  - **Google/`fli`** exposes no baggage field on `FlightResult` or
+    `FlightLeg` either. `BookingOption.fare_name` carries the brand, but only
+    via `get_booking_options()` — an extra call per flight (already a separate
+    TODO item above).
+
+  **So baggage allowance is not readable from either source.** The robust move
+  is to constrain the query so every returned price is comparable by
+  construction, rather than parsing an allowance that isn't there:
+  - `fli` accepts `FlightSearchFilters.bags` (`BagsFilter(carry_on=..,
+    checked_bags=..)`) and, notably, `exclude_basic_economy: bool`.
+  - Kayak's own UI has the equivalent filter ("Only show options with seat
+    selection and carry-on bag"), so `_build_url` would need the matching
+    parameter — **verify against a real render, do not guess the param name**.
+
+  Storing `fare_brand` is still worth doing on its own: it is what makes the
+  duplicate rows meaningful (see below), and it is the honest label for why a
+  €641 fare undercuts a €715 one.
+
+  **Sequencing note:** do this together with the passengers/ages item — bag
+  rules matter most when travelling with a child, and both change
+  `_build_url` and the `fli` filter construction, so doing them separately
+  means touching the same code and invalidating captured samples twice.
+
+- [x] **Duplicate Kayak rows** — Kayak lists one itinerary once per fare brand;
+  `_first_carrier` collapses the carrier-list difference and `flight_key`
+  carries no brand, so they arrived identical. Fixed 2026-08-11 by
+  over-fetching `_OVERFETCH_ROWS` extra itineraries and collapsing rows
+  identical in carrier + both times + price (`KayakSource._dedupe_rows`).
+  Capturing `fare_brand` would make them distinguishable rather than
+  duplicated, at which point the dedupe key should include it.
+
+- [ ] **`FlightResult.self_transfer` is a first-class field in `fli`.** Google
+  flags self-transfer itineraries natively, so the roadmap item below need not
+  rely on scraping Kayak's `Self-transfer hack` label for the Google side.
+
 ### Self-transfer / "hacker" fares (currently excluded)
 - [ ] **Optionally surface Kayak's "Self-transfer hack" itineraries.** These are
   two **separately ticketed** flights Kayak stitches together — e.g.

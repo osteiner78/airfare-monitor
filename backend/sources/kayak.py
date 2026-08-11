@@ -51,6 +51,12 @@ _RENDER_WORKER_MODULE = "backend.sources.kayak_render"
 # moves both together.
 _WORKER_TIMEOUT_FACTOR = 2.5
 
+# Extra itineraries requested so that duplicates removed by _dedupe_rows do not
+# shrink the stored result set. 2 covers the observed case (one repeated fare
+# brand); the slice is still a small fraction of the ~20k-char body, so the
+# LLM-latency reason for trimming at all is unaffected.
+_OVERFETCH_ROWS = 2
+
 # Derived from the WORKER's cap, not from 2 * _RENDER_TIMEOUT_S. Plan 021
 # Phase 2 moved the render into a subprocess with a 2.5x budget while this
 # line still assumed the old in-process 2x bound, leaving 7.5s of slack
@@ -607,11 +613,21 @@ class KayakSource:
             # the guarantee (Decision 1) has to hold regardless of what runs
             # inside it. Grounding below still uses the unstripped body_text
             # (task 1.4).
+            # Over-fetch, then dedupe back down to top_n. Kayak lists the same
+            # itinerary more than once when it sells it under several fare
+            # brands -- observed 2026-08-11 on GRU-GVA, where two rows shared
+            # 7:20 pm - 10:25 pm+1 at EUR641 and differed only by carrier list
+            # ("LATAM Airlines, Iberia" vs "LATAM Airlines") and brand
+            # ("Light + Economy Cabin" vs "Light"). _first_carrier collapses
+            # the first difference and flight_key carries no brand, so both
+            # arrive here identical. Slicing exactly top_n blocks meant that
+            # duplicate consumed a slot ON THE PAGE, before extraction, so
+            # deduping afterwards alone would return top_n-1 rows.
             rows = await self._extract(
                 _strip_self_transfer_rows(
                     _strip_nearby_airport_promos(_strip_placements(body_text))
                 ),
-                top_n,
+                top_n + _OVERFETCH_ROWS,
                 depart_date,
             )
             record["extracted_rows"] = len(rows)
@@ -645,7 +661,9 @@ class KayakSource:
             else:
                 record["outcome"] = "extracted"
 
-            return [self._map_result(row, currency, url) for row in validated]
+            deduped = self._dedupe_rows(validated)[:top_n]
+            record["stored_rows"] = len(deduped)
+            return [self._map_result(row, currency, url) for row in deduped]
         finally:
             record["elapsed_s"] = round(time.monotonic() - started, 2)
             if self.config.samples_dir:
@@ -877,6 +895,35 @@ class KayakSource:
             if median > 0 and row["price"] > 10 * median:
                 logger.warning("Dropping Kayak row priced wildly outside the band of other rows: %r", row)
                 continue
+            kept.append(row)
+        return kept
+
+    @staticmethod
+    def _dedupe_rows(rows: list[dict]) -> list[dict]:
+        """Collapse rows we cannot tell apart.
+
+        Two rows identical in carrier, both clock times and price are the same
+        offer as far as anything downstream can see: they share a flight_key,
+        so they occupy one chart line and one colour slot, and the second adds
+        no information to the results table. They are NOT necessarily the same
+        product -- Kayak sells one itinerary under several fare brands -- but
+        the distinguishing field (brand) is not captured, so storing the row
+        twice states a difference that nothing can read. Capturing fare brand
+        is on the roadmap; until then, first occurrence wins (rows arrive
+        cheapest-first).
+        """
+        seen: set[tuple] = set()
+        kept: list[dict] = []
+        for row in rows:
+            identity = (
+                " ".join(str(row.get("airline") or "").split()).casefold(),
+                row.get("departure_time"),
+                row.get("arrival_time"),
+                row.get("price"),
+            )
+            if identity in seen:
+                continue
+            seen.add(identity)
             kept.append(row)
         return kept
 
