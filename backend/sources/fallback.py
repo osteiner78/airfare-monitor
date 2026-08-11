@@ -32,6 +32,17 @@ class FallbackSource:
 
         results = await self.secondary.search(origin, dest, depart_date, return_date, currency, top_n)
         if results:
+            # Falling back is a silent quality drop, not a success: fast_flights
+            # returns far fewer and coarser rows, so the dashboard's headline
+            # price can jump hundreds of euros with nothing in system_logs to
+            # explain it (observed 2026-08-11: fli 113 rows cheapest EUR784 ->
+            # fast_flights 6 rows cheapest EUR957, no log line at all).
+            # WARNING, not ERROR: the cycle did produce prices.
+            self.last_error = (
+                f"fli returned no rows ({primary_error or 'no error reported'}); "
+                f"served {len(results)} row(s) from fast_flights instead"
+            )
+            self.last_error_level = "WARNING"
             return results
 
         secondary_error = self.secondary.last_error

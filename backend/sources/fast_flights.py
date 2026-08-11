@@ -74,10 +74,28 @@ class FastFlightsSource:
 
         flight_numbers = self._extract_flight_numbers(html)
 
-        return [
+        mapped = [
             self._map_result(r, flight_numbers[i] if i < len(flight_numbers) else [], currency, query)
             for i, r in enumerate(results)
         ]
+
+        # A row whose timestamp _to_iso could not build is unidentifiable:
+        # make_flight_key is airline|departure|arrival, so an empty component
+        # yields "tap air portugal||2026-08-21T22:30:00" -- which every flight
+        # by that airline arriving then collapses into, merging genuinely
+        # different itineraries under one identity and one chart line. Keeping
+        # the row was only safe while the key still carried flight_number;
+        # plan 019 removed it, and this was missed at the time (96 such rows
+        # reached production before it was noticed on 2026-08-11).
+        usable = [r for r in mapped if r.departure_time and r.arrival_time]
+        dropped = len(mapped) - len(usable)
+        if dropped:
+            self.last_error = (
+                f"dropped {dropped} of {len(mapped)} rows with an unusable "
+                "departure/arrival time (Google returned a null date component)"
+            )
+            self.last_error_level = "WARNING"
+        return usable
 
     @staticmethod
     def _extract_flight_numbers(html: str) -> list[list[str]]:
@@ -163,8 +181,9 @@ class FastFlightsSource:
         # production over ~27h. Minute is safe to default (Google already omits
         # it when :00); hour or date is not -- departure_time feeds flight_key,
         # so a fabricated midnight would forge a flight identity. Degrade to ""
-        # instead: the key falls back to airline+flight_number and
-        # _split_timestamps already tolerates a missing timestamp.
+        # instead, and let _fetch DROP the row: since plan 019 the key no
+        # longer carries flight_number, so "" no longer degrades to a usable
+        # identity the way this comment once described -- it collides.
         if mi is None:
             mi = 0
         if any(part is None for part in (y, m, d, h)):
