@@ -70,7 +70,23 @@ async def test_price_delta_uses_cheapest_previous_price_when_flight_key_quoted_b
 
 
 @pytest.mark.asyncio
-async def test_missing_flight_reconstruction_uses_cheapest_historical_price(client):
+async def test_a_source_that_did_not_run_keeps_reporting_its_own_last_view(client):
+    """Rewritten for the blended model (2026-08-11), replacing
+    test_missing_flight_reconstruction_uses_cheapest_historical_price.
+
+    That test asserted this scenario rendered SHARED_KEY as a *missing* row at
+    Google's older EUR711 quote. Under blending it is a live Kayak row at
+    EUR785, and that is the more truthful reading: Kayak's most recent
+    observation still lists the flight at 785 and Kayak has not run since,
+    while Google's NEWEST run no longer lists the flight at all -- so 711 is
+    the stale number, not 785. Showing 711 as the flight's price would be the
+    original bug inverted.
+
+    The replaced test's real intent -- cheapest quote wins when one flight_key
+    is quoted by several sources -- is still covered by
+    test_price_delta_uses_cheapest_previous_price_... above and by
+    test_missing_row_still_uses_the_cheapest_quote_of_its_own_source below.
+    """
     from backend.db import create_snapshot, insert_flight_prices
 
     await client.post("/api/trackers", json=TRACKER_FORM)
@@ -81,7 +97,40 @@ async def test_missing_flight_reconstruction_uses_cheapest_historical_price(clie
         _price_row(SHARED_KEY, "kayak", 785.0),
     ])
 
-    # Current snapshot has a different flight entirely -> SHARED_KEY is "missing".
+    current_snapshot = await create_snapshot(1, results_count=1)
+    await insert_flight_prices(current_snapshot["id"], 1, [
+        _price_row("LX|LX1234|2026-08-21T08:00:00", "google_flights", 900.0,
+                   airline="LX", flight_number="LX1234",
+                   departure_time="2026-08-21T08:00:00"),
+    ])
+
+    response = await client.get("/trackers/1")
+    assert response.status_code == 200
+
+    # Kayak's last view survives the Google-only cycle...
+    assert "€785" in response.text
+    # ...and wins "Best now", being cheaper than Google's fresh EUR900.
+    assert "Best now: €785" in response.text
+    # Google's fresh row is still there.
+    assert "€900" in response.text
+
+
+@pytest.mark.asyncio
+async def test_missing_row_still_uses_the_cheapest_quote_of_its_own_source(client):
+    """The replaced test's surviving intent: when a flight really does drop out
+    of a source that DID run, its reconstructed row uses that source's cheapest
+    quote, not its most expensive. Both quotes here belong to google_flights,
+    so blending cannot keep the flight alive from elsewhere."""
+    from backend.db import create_snapshot, insert_flight_prices
+
+    await client.post("/api/trackers", json=TRACKER_FORM)
+
+    prev_snapshot = await create_snapshot(1, results_count=2)
+    await insert_flight_prices(prev_snapshot["id"], 1, [
+        _price_row(SHARED_KEY, "google_flights", 711.0),
+        _price_row(SHARED_KEY, "google_flights", 785.0),
+    ])
+
     current_snapshot = await create_snapshot(1, results_count=1)
     await insert_flight_prices(current_snapshot["id"], 1, [
         _price_row("LX|LX1234|2026-08-21T08:00:00", "google_flights", 900.0,

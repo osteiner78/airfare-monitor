@@ -31,7 +31,7 @@
             <td>{% if item.flight.duration_min is not none %}{{ item.flight.duration_min // 60 }}h {{ "%02d"|format(item.flight.duration_min % 60) }}m{% else %}—{% endif %}</td>
             <td>{{ item.flight.stops }}</td>
             <td class="price-cell">{{ item.flight.currency | currency_symbol }}{{ "%.0f"|format(item.flight.price) }}</td>
-            <td>{{ item.flight.source | source_label }}</td>
+            <td>{{ item.flight.source | source_label }}{% if item.flight.get("is_stale") %}<span class="price-age" title="Last seen {{ item.flight.get('age_minutes')|int }} min before the latest cycle">{{ item.flight.get("age_minutes")|int }}m ago</span>{% endif %}</td>
             <td>{% include "partials/price_badge.html" %}</td>
         </tr>
         {% endfor %}

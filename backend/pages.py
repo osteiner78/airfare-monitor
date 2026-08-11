@@ -14,10 +14,10 @@ from backend.db import (
     delete_tracker,
     get_best_price_series,
     get_db_stats,
-    get_flight_prices_for_snapshot,
+    get_flight_prices_for_snapshots,
     get_historical_best_price,
     get_latest_snapshot,
-    get_previous_snapshot,
+    get_source_observations,
     get_price_history,
     get_recent_logs,
     get_sticky_top_flight_keys,
@@ -33,6 +33,47 @@ CHART_COLORS = [
     "#4a90d9", "#e67e22", "#2ecc71", "#e74c3c", "#9b59b6",
     "#1abc9c", "#f39c12", "#3498db", "#e91e63", "#00bcd4",
 ]
+
+
+_TS_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S")
+
+
+def _parse_ts(value):
+    if not value:
+        return None
+    text = str(value).split(".")[0]
+    for fmt in _TS_FORMATS:
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+# FallbackSource runs fast_flights ONLY when fli returns nothing, so the two
+# are alternate scrapers of one upstream rather than independent sources.
+# Blending them separately resurrects a stale fallback set beside fresh primary
+# rows -- the same flights listed twice at different ages.
+_BLEND_GROUPS = {"google_flights": "google", "fast_flights": "google"}
+
+
+def _blend_group(source: str) -> str:
+    return _BLEND_GROUPS.get(source, source)
+
+
+def _age_minutes(observed_at, newest_at) -> float:
+    """How far behind the newest observation this one is, in minutes.
+
+    Measured against the newest snapshot rather than wall-clock now, so the
+    badge answers "older than the rest of this page" -- which is the thing
+    that makes a blended row worth flagging. Unparseable timestamps count as
+    fresh: refusing to display a row because its timestamp could not be parsed
+    would lose real prices over a formatting detail.
+    """
+    a, b = _parse_ts(observed_at), _parse_ts(newest_at)
+    if a is None or b is None:
+        return 0.0
+    return max(0.0, (b - a).total_seconds() / 60.0)
 
 
 def _assign_chart_colors(flight_keys: list[str]) -> dict[str, str]:
@@ -337,30 +378,77 @@ async def _build_detail_context(tracker_id: int) -> dict:
         raise HTTPException(status_code=404, detail="Tracker not found")
 
     latest = await get_latest_snapshot(tracker_id)
-    previous = await get_previous_snapshot(tracker_id)
+
+    # Blend the latest observation of EACH source rather than reading a single
+    # snapshot. A Google-only cycle used to make Kayak's rows look "missing"
+    # (i.e. those fares vanished) when the truth was only that Kayak had not
+    # run; two such cycles in a row dropped them from the page entirely,
+    # because the missing-row reconstruction looked back exactly one snapshot.
+    # This is a read-time join and nothing is written: carrying rows forward
+    # into new snapshots would fabricate chart points, and historical_best_price
+    # is MIN over all rows and never recomputed, so a re-inserted stale price
+    # would distort the all-time low permanently.
+    observations = await get_source_observations(tracker_id, per_source=2)
+
+    # Beyond this, a source's rows are dropped rather than shown: a fare from
+    # several cycles ago is not "current" in any useful sense, and quietly
+    # presenting it as such is worse than showing nothing.
+    max_age_minutes = max(2 * (tracker["interval_minutes"] or 60), 60)
+    newest_searched_at = latest["searched_at"] if latest else None
+
+    # Blend by GROUP, not by raw source. `google_flights` and `fast_flights`
+    # are the same upstream (Google) behind FallbackSource, which only runs the
+    # secondary when the primary comes back empty -- they are mutually
+    # exclusive by construction, not independent opinions. Treating them
+    # separately kept a stale fast_flights set alive next to fresh
+    # google_flights rows, showing the same flights twice with different ages.
+    by_group: dict[str, list[dict]] = {}
+    for obs in observations:
+        by_group.setdefault(_blend_group(obs["source"]), []).append(obs)
+
+    latest_by_group: dict[str, dict] = {}
+    previous_by_group: dict[str, dict] = {}
+    for group, group_observations in by_group.items():
+        seen: dict[int, dict] = {}
+        for obs in group_observations:
+            seen.setdefault(obs["snapshot_id"], obs)
+        ordered = sorted(seen.values(), key=lambda o: o["snapshot_id"], reverse=True)
+        if _age_minutes(ordered[0]["searched_at"], newest_searched_at) > max_age_minutes:
+            continue
+        latest_by_group[group] = ordered[0]
+        if len(ordered) > 1:
+            previous_by_group[group] = ordered[1]
+
+    wanted_snapshots = {o["snapshot_id"] for o in latest_by_group.values()}
+    wanted_snapshots |= {o["snapshot_id"] for o in previous_by_group.values()}
+    rows = await get_flight_prices_for_snapshots(sorted(wanted_snapshots))
 
     current_flights = []
-    previous_prices = {}
+    prev_rows_by_group: dict[str, dict] = {}
+    for row in rows:
+        group = _blend_group(row.get("source") or "")
+        latest_obs = latest_by_group.get(group)
+        if latest_obs and row["snapshot_id"] == latest_obs["snapshot_id"]:
+            row["observed_at"] = latest_obs["searched_at"]
+            row["age_minutes"] = _age_minutes(latest_obs["searched_at"], newest_searched_at)
+            row["is_stale"] = row["age_minutes"] > 0
+            current_flights.append(row)
+            continue
+        prev_obs = previous_by_group.get(group)
+        if prev_obs and row["snapshot_id"] == prev_obs["snapshot_id"]:
+            prev_rows_by_group.setdefault(group, {}).setdefault(row["flight_key"], row)
 
-    if latest:
-        current_flights = await get_flight_prices_for_snapshot(latest["id"])
-
-    if previous:
-        prev = await get_flight_prices_for_snapshot(previous["id"])
-        # prev is ORDER BY price ASC; setdefault keeps the first (cheapest)
-        # row per flight_key when the same flight was quoted by two sources.
-        previous_prices = {}
-        prev_flights = {}
-        for p in prev:
-            previous_prices.setdefault(p["flight_key"], p["price"])
-            prev_flights.setdefault(p["flight_key"], p)
-    else:
-        prev_flights = {}
+    # rows is ORDER BY price ASC, and the per-snapshot ordering is preserved
+    # within it, but concatenating sources breaks the global order.
+    current_flights.sort(key=lambda r: r["price"])
 
     flights_with_delta = []
     for flight in current_flights:
-        delta = None
-        prev_price = previous_prices.get(flight["flight_key"])
+        # Deltas are per SOURCE: comparing Kayak's price now against whatever
+        # Google quoted in some intervening snapshot is not a price movement.
+        prev_for_source = prev_rows_by_group.get(_blend_group(flight.get("source") or ""), {})
+        prev_row = prev_for_source.get(flight["flight_key"])
+        prev_price = prev_row["price"] if prev_row else None
         if prev_price is not None:
             if flight["price"] < prev_price:
                 delta = {"type": "down", "amount": round(prev_price - flight["price"], 2)}
@@ -371,6 +459,11 @@ async def _build_detail_context(tracker_id: int) -> dict:
         else:
             delta = {"type": "new"}
         flights_with_delta.append({"flight": flight, "delta": delta})
+
+    prev_flights = {}
+    for group, by_key in prev_rows_by_group.items():
+        for key, row in by_key.items():
+            prev_flights.setdefault(key, row)
 
     for item in flights_with_delta:
         _split_timestamps(item["flight"])
@@ -514,8 +607,28 @@ async def _build_detail_context(tracker_id: int) -> dict:
             airline_groups[name]["best_price"] = f["price"]
     airlines = sorted(airline_groups.values(), key=lambda a: (a["best_price"], a["name"]))
 
-    best_price = min((f["flight"]["price"] for f in flights_with_delta if f.get("delta", {}).get("type") != "missing"), default=None)
+    # "Best now" is the cheapest across the BLENDED set, so a Kayak fare that
+    # is genuinely the cheapest still wins even when Kayak did not run in the
+    # newest cycle. When the winner is not from the freshest observation the
+    # template shows its age, because the honest claim is "cheapest we know
+    # of, seen N minutes ago", not "cheapest right now".
+    live_rows = [f["flight"] for f in flights_with_delta
+                 if f.get("delta", {}).get("type") != "missing"]
+    best_row = min(live_rows, key=lambda r: r["price"], default=None)
+    best_price = best_row["price"] if best_row else None
+    best_price_source = best_row.get("source") if best_row else None
+    best_price_age_minutes = int(best_row.get("age_minutes") or 0) if best_row else 0
+    best_price_is_stale = bool(best_row and best_row.get("is_stale"))
     historical_best_price = await get_historical_best_price(tracker_id)
+
+    source_freshness = [
+        {
+            "source": source,
+            "searched_at": obs["searched_at"],
+            "age_minutes": int(_age_minutes(obs["searched_at"], newest_searched_at)),
+        }
+        for source, obs in sorted(latest_by_group.items())
+    ]
 
     return {
         "tracker": tracker,
@@ -528,6 +641,10 @@ async def _build_detail_context(tracker_id: int) -> dict:
         "max_stops": max_stops,
         "max_duration": max_duration,
         "best_price": best_price,
+        "best_price_source": best_price_source,
+        "best_price_age_minutes": best_price_age_minutes,
+        "best_price_is_stale": best_price_is_stale,
+        "source_freshness": source_freshness,
         "historical_best_price": historical_best_price,
         "airlines": airlines,
     }

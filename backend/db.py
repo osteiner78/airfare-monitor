@@ -253,6 +253,65 @@ async def get_flight_prices_for_snapshot(snapshot_id: int) -> list:
     return [_row_to_dict(r) for r in rows]
 
 
+async def get_source_observations(tracker_id: int, per_source: int = 2) -> list:
+    """The most recent snapshots that actually CONTAIN each source.
+
+    Sources run on independent cadences (Kayak every ~60 min and only when
+    due; fli every tick), so "the latest snapshot" is not "the latest view of
+    the world" -- it is only the latest view from whichever sources happened
+    to run. Reading one snapshot made a source that did not run look like a
+    set of flights that had disappeared, which is a different fact entirely.
+
+    Returns one row per (source, rank), rank 1 = most recent, ordered by
+    source then rank. `per_source=2` gives each source its own previous
+    observation, which is what per-source deltas need -- comparing a Kayak row
+    against a Google-only snapshot would produce a meaningless arrow.
+    """
+    db_path = get_db_path()
+    query = """
+        WITH observations AS (
+            SELECT fp.source, fp.snapshot_id, s.searched_at,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY fp.source ORDER BY fp.snapshot_id DESC
+                   ) AS rank
+            FROM (
+                SELECT DISTINCT source, snapshot_id
+                FROM flight_prices WHERE tracker_id = ?
+            ) fp
+            JOIN snapshots s ON s.id = fp.snapshot_id
+        )
+        SELECT source, snapshot_id, searched_at, rank
+        FROM observations WHERE rank <= ?
+        ORDER BY source, rank
+    """
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(query, (tracker_id, per_source)) as cur:
+            rows = await cur.fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+async def get_flight_prices_for_snapshots(snapshot_ids: list[int]) -> list:
+    """Rows for several snapshots in one query, cheapest first.
+
+    The blended view needs up to two snapshots per source; issuing one query
+    each turns page load into N round trips as sources are added.
+    """
+    if not snapshot_ids:
+        return []
+    db_path = get_db_path()
+    placeholders = ",".join("?" for _ in snapshot_ids)
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            f"SELECT * FROM flight_prices WHERE snapshot_id IN ({placeholders}) "
+            "ORDER BY price ASC",
+            tuple(snapshot_ids),
+        ) as cur:
+            rows = await cur.fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
 async def get_price_history(tracker_id: int, flight_keys: list[str] | None = None) -> list:
     db_path = get_db_path()
     query = """SELECT fp.flight_key, fp.price, fp.currency, fp.airline,
