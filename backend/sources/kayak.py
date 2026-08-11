@@ -218,6 +218,67 @@ def _looks_blocked_structurally(body_text: str) -> bool:
 _PLACEMENT_START_MARKER = "This is a paid placement from"
 _PLACEMENT_END_MARKER = "View Deal"
 
+# Precautionary, NOT observed live. Every real placement seen so far (19 blocks
+# across two 2026-08-11 captures) carries the disclosure sentence above, and
+# "Ad" only ever appears as its own line *inside* such a block. These two forms
+# are named in plan 019's write-up as shapes Kayak might also use, so they are
+# handled -- but only as a whole line, never as a substring, because "Sponsored"
+# or "Ad" appearing mid-sentence in real copy would otherwise swallow every
+# price up to the next "View Deal".
+_PLACEMENT_ALT_START_LINES = ("sponsored", "| ad", "ad |")
+
+# A placement block is a handful of lines. Without a bound, one false-positive
+# start marker on a page with no later "View Deal" would strip the entire
+# remainder of the results -- silently, and looking exactly like "no flights".
+_PLACEMENT_MAX_BLOCK_LINES = 40
+
+# Kayak offers a cheaper fare from a DIFFERENT airport ("Depart from nearby VCP
+# and save EUR78"), and _results_section's slice starts at the top of the
+# results, so this block and its price land in the extraction input. That price
+# is not for the route being tracked. Same class of defect as the paid
+# placement -- a real price, printed on the page, belonging to something else --
+# so grounding cannot catch it either. Observed live 2026-08-11 on GRU-ZRH.
+_NEARBY_AIRPORT_START_MARKER = "Depart from nearby"
+_NEARBY_AIRPORT_END_MARKER = "Show all"
+_NEARBY_AIRPORT_MAX_BLOCK_LINES = 12
+
+
+def _is_placement_start(line: str) -> bool:
+    if _PLACEMENT_START_MARKER in line:
+        return True
+    return line.strip().casefold() in _PLACEMENT_ALT_START_LINES
+
+
+def _strip_nearby_airport_promos(body_text: str) -> str:
+    """Remove "Depart from nearby XXX and save EUR N ... Show all" blocks.
+
+    The fare inside belongs to a different origin airport, so attributing it to
+    this tracker's route would store a price the user cannot actually book for
+    the searched itinerary.
+    """
+    if _NEARBY_AIRPORT_START_MARKER not in body_text:
+        return body_text
+
+    lines = body_text.split("\n")
+    kept: list[str] = []
+    i = 0
+    while i < len(lines):
+        if _NEARBY_AIRPORT_START_MARKER in lines[i]:
+            end = i + 1
+            limit = min(len(lines), i + 1 + _NEARBY_AIRPORT_MAX_BLOCK_LINES)
+            while end < limit and _NEARBY_AIRPORT_END_MARKER not in lines[end]:
+                end += 1
+            if end < limit:
+                i = end + 1
+                continue
+            # No terminator within the expected span: drop only the promo line
+            # itself rather than guessing where the block ends.
+            i += 1
+            continue
+        kept.append(lines[i])
+        i += 1
+    return "\n".join(kept)
+
 
 def _strip_placements(body_text: str) -> str:
     """Remove paid-placement blocks before the model ever sees them (plan 020
@@ -231,18 +292,19 @@ def _strip_placements(body_text: str) -> str:
     that one line and leave the block's other standalone price repeats
     behind -- exactly the €806 defect this exists to fix.
     """
-    if _PLACEMENT_START_MARKER not in body_text:
+    lines = body_text.split("\n")
+    if not any(_is_placement_start(line) for line in lines):
         return body_text
 
-    lines = body_text.split("\n")
     kept = []
     i = 0
     while i < len(lines):
-        if _PLACEMENT_START_MARKER in lines[i]:
+        if _is_placement_start(lines[i]):
             end = i + 1
-            while end < len(lines) and _PLACEMENT_END_MARKER not in lines[end]:
+            limit = min(len(lines), i + 1 + _PLACEMENT_MAX_BLOCK_LINES)
+            while end < limit and _PLACEMENT_END_MARKER not in lines[end]:
                 end += 1
-            i = end + 1 if end < len(lines) else i + 1
+            i = end + 1 if end < limit else i + 1
             continue
         kept.append(lines[i])
         i += 1
@@ -269,7 +331,7 @@ def _results_section(body_text: str, max_results: int) -> str:
     if max_results <= 0:
         return body_text
 
-    body_text = _strip_placements(body_text)
+    body_text = _strip_nearby_airport_promos(_strip_placements(body_text))
     lines = body_text.split("\n")
     marker_lines = [
         i for i, line in enumerate(lines) if line.strip().lower() in _RESULT_MARKERS_LOWER
@@ -487,7 +549,11 @@ class KayakSource:
             # the guarantee (Decision 1) has to hold regardless of what runs
             # inside it. Grounding below still uses the unstripped body_text
             # (task 1.4).
-            rows = await self._extract(_strip_placements(body_text), top_n, depart_date)
+            rows = await self._extract(
+                _strip_nearby_airport_promos(_strip_placements(body_text)),
+                top_n,
+                depart_date,
+            )
             record["extracted_rows"] = len(rows)
             if not rows:
                 record["outcome"] = "no_flights"

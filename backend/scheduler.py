@@ -27,6 +27,39 @@ def _jittered_kayak_interval_minutes(base_minutes: float) -> float:
     return max(1.0, jittered)
 
 
+# The next-due time is computed from a base BELOW the tracker's own interval so
+# that jitter's upper end still lands before the next tick. At the full
+# interval the +/-20% overshoots half the time, and because the old code also
+# measured from cycle *end* the overshoot compounded: Kayak ran on every other
+# tick (~6h instead of ~3h). Measured 2026-08-10/11 on tracker 20:
+#   07:42 ran -> next due ~10:42 -> 10:31 tick was 11 min early -> SKIPPED
+#   13:39 ran -> next due ~16:39 -> 16:31 tick was  8 min early -> SKIPPED
+# 0.7 leaves 101-151 min against a 180 min tick: always inside, with ~29 min
+# of headroom so a slow cycle cannot reintroduce the skip even if the
+# measurement point ever slips back toward cycle end. Being due early costs
+# nothing -- the tick still gates the actual run, so the real cadence stays
+# ~180 min. The unpredictability that matters for detection comes from the
+# 0-15 min pre-render sleep, which is unchanged.
+_KAYAK_DUE_MARGIN = 0.7
+
+_kayak_render_lock: asyncio.Lock | None = None
+
+
+def _get_kayak_render_lock() -> asyncio.Lock:
+    """Serialize Kayak renders across ALL trackers.
+
+    `max_instances=1` is per-job, so it stops one tracker overlapping itself
+    but not two trackers overlapping each other -- and every render drives the
+    same Chromium profile at `data/kayak-profile`, which is single-writer. With
+    Kayak enabled on trackers 20/21/22, whose jobs fire within a second of each
+    other, concurrent renders would fight over that lock directory.
+    """
+    global _kayak_render_lock
+    if _kayak_render_lock is None:
+        _kayak_render_lock = asyncio.Lock()
+    return _kayak_render_lock
+
+
 async def search_and_store(tracker_id: int, delay: bool = True) -> None:
     from backend.db import create_snapshot, get_tracker, insert_flight_prices, insert_log, update_tracker
     from backend.fingerprint import make_flight_key
@@ -76,18 +109,23 @@ async def search_and_store(tracker_id: int, delay: bool = True) -> None:
     # runs against an un-migrated table for some window. A missing column must
     # mean "Kayak off", never a KeyError that kills the whole search.
     if tracker.get("kayak_enabled") and _kayak_due(tracker.get("kayak_next_due_at"), datetime.now()):
+        # Captured BEFORE the sleep and the render: measuring the next due time
+        # from cycle end pushed it later every cycle, which is half of what
+        # made Kayak run only every other tick (see _KAYAK_DUE_MARGIN).
+        kayak_cycle_started = datetime.now()
         try:
             if delay:
                 await asyncio.sleep(random.uniform(0, 15 * 60))
             kayak_source = KayakSource()
-            kayak_results = await kayak_source.search(
-                tracker["origin"],
-                tracker["destination"],
-                tracker["depart_date"],
-                tracker.get("return_date"),
-                tracker["currency"],
-                tracker["top_n"],
-            )
+            async with _get_kayak_render_lock():
+                kayak_results = await kayak_source.search(
+                    tracker["origin"],
+                    tracker["destination"],
+                    tracker["depart_date"],
+                    tracker.get("return_date"),
+                    tracker["currency"],
+                    tracker["top_n"],
+                )
             results.extend(kayak_results)
             last_error = getattr(kayak_source, "last_error", None)
             if last_error:
@@ -101,8 +139,10 @@ async def search_and_store(tracker_id: int, delay: bool = True) -> None:
         except Exception as e:
             await insert_log("ERROR", "kayak_search_error", tracker_id=tracker_id, message=str(e))
         finally:
-            next_due_at = datetime.now() + timedelta(
-                minutes=_jittered_kayak_interval_minutes(tracker["interval_minutes"])
+            next_due_at = kayak_cycle_started + timedelta(
+                minutes=_jittered_kayak_interval_minutes(
+                    tracker["interval_minutes"] * _KAYAK_DUE_MARGIN
+                )
             )
             await update_tracker(tracker_id, kayak_next_due_at=next_due_at.strftime(_KAYAK_TS_FORMAT))
 
