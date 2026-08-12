@@ -77,6 +77,47 @@ def test_overfetch_is_positive_or_dedupe_shrinks_the_result_set():
     )
 
 
+def test_a_carrier_list_collapses_against_its_first_carrier():
+    """The pair from this module's docstring, in the shape Kayak really emits.
+
+    Live regression 2026-08-11: dedupe compared the RAW airline while
+    _first_carrier runs later in _map_result, so these two survived as one
+    stored duplicate on all 23 of tracker 21's runs that day.
+    """
+    rows = [_row("LATAM Airlines, Iberia", 641.0), _row("LATAM Airlines", 641.0)]
+    assert len(KayakSource._dedupe_rows(rows)) == 1
+
+
+def test_a_timestamp_without_seconds_collapses_against_the_canonical_form():
+    """The model alternates between "...T19:20" and "...T19:20:00" for one
+    flight; _canonical_timestamp folds them, so dedupe must see the folded
+    form or both reach the DB as byte-identical rows."""
+    rows = [_row("LATAM Airlines", 641.0, dep="2026-08-21T19:20", arr="2026-08-22T22:25"),
+            _row("LATAM Airlines", 641.0)]
+    assert len(KayakSource._dedupe_rows(rows)) == 1
+
+
+def test_dedupe_identity_agrees_with_what_actually_gets_stored():
+    """The invariant the two tests above are instances of: whatever survives
+    dedupe must be distinct AFTER _map_result, since that is the row the DB
+    sees. Add a normalisation to _map_result without teaching dedupe about it
+    and this fails -- which is exactly how the 2026-08-11 regression escaped.
+    """
+    rows = [
+        _row("LATAM Airlines, Iberia", 641.0),
+        _row("LATAM Airlines", 641.0),
+        _row("latam   airlines", 641.0, dep="2026-08-21T19:20"),
+        _row("Iberia", 641.0),
+        _row("LATAM Airlines", 705.0),
+    ]
+    kept = KayakSource._dedupe_rows(rows)
+    stored = {
+        (r.airline.casefold(), r.departure_time, r.arrival_time, r.price)
+        for r in (KayakSource._map_result(row, "EUR", "u") for row in kept)
+    }
+    assert len(stored) == len(kept)
+
+
 # --- 2. startup ---
 
 @pytest.mark.asyncio

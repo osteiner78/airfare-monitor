@@ -911,15 +911,26 @@ class KayakSource:
         twice states a difference that nothing can read. Capturing fare brand
         is on the roadmap; until then, first occurrence wins (rows arrive
         cheapest-first).
+
+        Identity is read off _map_result's output, not off the raw extracted
+        row, because every normalisation that MAKES two rows identical runs in
+        _map_result: _first_carrier folds "LATAM Airlines, Iberia" into "LATAM
+        Airlines" and _canonical_timestamp folds "...T19:20" into
+        "...T19:20:00". Comparing raw fields let the exact pair this function
+        exists for through -- tracker 21 stored the duplicate on all 23 runs of
+        2026-08-11 and lost a genuine fifth itinerary to the top_n slice each
+        time. Mapping first means a normalisation added later cannot silently
+        reopen that gap.
         """
         seen: set[tuple] = set()
         kept: list[dict] = []
         for row in rows:
+            mapped = KayakSource._map_result(row, "", "")
             identity = (
-                " ".join(str(row.get("airline") or "").split()).casefold(),
-                row.get("departure_time"),
-                row.get("arrival_time"),
-                row.get("price"),
+                " ".join(mapped.airline.split()).casefold(),
+                mapped.departure_time,
+                mapped.arrival_time,
+                mapped.price,
             )
             if identity in seen:
                 continue
