@@ -33,6 +33,71 @@
 
 ## Roadmap
 
+### Code review — do this BEFORE Passengers
+- [ ] **Audit the codebase for cross-file invariants that nothing pins.** Added
+  2026-08-12 after a run of defects that were not independent accidents but
+  one repeating shape.
+
+  **The pattern.** Recent bugs, and what class each belongs to:
+  - `_dedupe_rows` compared raw extracted fields while the normalisations that
+    make rows identical (`_first_carrier`, `_canonical_timestamp`) ran later in
+    `_map_result` (fixed 2026-08-12, `130b205`) — *ordering dependency between
+    two functions, stated nowhere*.
+  - `_OVERALL_TIMEOUT_S` assumed an in-process render bound after plan 021 gave
+    the worker a `2.5x` budget, cutting slack 30s → 7.5s and losing a good page
+    mid-extraction (fixed 2026-08-11) — *constant derived from a constant that
+    moved*.
+  - `fast_flights::_to_iso` returning `""` was safe only while `flight_key`
+    carried `flight_number`; plan 019 removed it and 96 unidentifiable rows
+    reached production — *a distant change invalidated a local assumption, and
+    nobody re-audited the callers*.
+  - `FallbackSource` served degraded results without setting `last_error`, so
+    fli failing looked exactly like fli succeeding — *the observability
+    contract (`last_error` is the only channel `/monitor` sees) held by
+    convention, not by construction*.
+
+  **The honest caveat:** all four were found by reading production data, not by
+  reading code. A review is worth doing, but it is a complement to the data
+  checks, not a replacement — budget the time accordingly and do not expect it
+  to retire the two open watch items (airline grounding, the `| Ad` /
+  `Sponsored` variants), which only live traffic can close.
+
+  **Scope, in priority order** — hunt for the shape above, not for style:
+  - **Ordering and derivation couplings.** Every place one function's output
+    feeds another's comparison, or one constant is computed from another. The
+    fix is usually a test asserting the invariant (as
+    `test_dedupe_identity_agrees_with_what_actually_gets_stored` and
+    `tests/test_kayak_timeout_budget.py` now do), not a code change.
+  - **`flight_key`'s seven-plus dedup sites.** CLAUDE.md lists them; the audit
+    question is "does this assume one row per `flight_key` per snapshot?", and
+    the list was last verified before `_group_duplicate_price_rows` (`3e947f9`)
+    added an eighth consumer.
+  - **Silent-degradation paths.** Anywhere a source, render, or extraction can
+    return fewer rows or none while reporting success. `logger.warning` never
+    reaches `system_logs`; only `last_error`/`last_error_level` does.
+  - **Guards that answer a narrower question than the one that matters.**
+    `_validate` asks "is this printed on the page?", never "does it belong to
+    this route/row?" — which is why adverts, nearby-airport promos and
+    self-transfer fares each needed their own strip. Assume there is a fourth.
+  - **Tracker-column reads on the main search path.** `tracker.get(...)`, never
+    `tracker[...]` — a missing column must degrade to "feature off". This will
+    matter immediately, since Passengers adds columns.
+
+  **Out of scope:** refactoring for its own sake, style, and anything that
+  touches `historical_best_price` semantics. Findings get recorded, not
+  opportunistically fixed mid-review.
+
+  **Why here and not later:** Passengers is the largest queued change and it
+  lands on exactly these seams — both sources' URL/filter construction, the
+  price semantics (`per-person` vs `total`), and new `trackers` columns read on
+  the search path. Reviewing after it ships means reviewing a bigger surface
+  with a live data-corruption risk attached. Fare brand + baggage is sequenced
+  with Passengers, so this is the last clean seam before a multi-part change.
+
+  **Deliverable:** `.agent/reports/022-code-review.md`, findings ranked by
+  blast radius, each with the invariant it breaks and whether a test can pin
+  it. Run it with `/code-review`.
+
 ### Passengers (adults + children with ages)
 - [ ] **Track a party, not one adult.** Every tracker currently searches for a
   single adult, so a family's real cost is invisible and any manual
