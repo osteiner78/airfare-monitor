@@ -114,11 +114,16 @@
             {% endif %}
         </div>
     </div>
-    <button class="status-toggle {% if tracker.active %}active{% else %}paused{% endif %}"
-            hx-patch="/trackers/{{ tracker.id }}/toggle"
-            hx-target="#card-{{ tracker.id }}"
-            hx-swap="outerHTML">
-        <span class="status-dot"></span>{{ "Active" if tracker.active else "Paused" }}
-    </button>
+    <div class="card-status-row">
+        <button class="status-toggle {% if tracker.active %}active{% else %}paused{% endif %}"
+                hx-patch="/trackers/{{ tracker.id }}/toggle"
+                hx-target="#card-{{ tracker.id }}"
+                hx-swap="outerHTML">
+            <span class="status-dot"></span>{{ "Active" if tracker.active else "Paused" }}
+        </button>
+        {% if tracker.kayak_enabled %}
+        <span class="badge kayak-badge">Kayak</span>
+        {% endif %}
+    </div>
     <span class="meta-fetch">Last checked: <span class="last-checked" data-iso="{{ tracker.last_searched_at or '' }}">{%- if tracker.last_searched_at %}{{ tracker.last_searched_at }}{% else %}Never{% endif -%}</span></span>
 </div>

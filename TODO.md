@@ -137,6 +137,39 @@
     the model must be asked for the flag explicitly, and `_validate` must
     ground it like any other field.
 
+### Additional sources + expandable flight detail
+- [ ] **Skyscanner as a third source, with an expandable per-row detail view.**
+  Deferred 2026-08-12 alongside the same-price row collapse
+  (`_group_duplicate_price_rows`, `backend/pages.py`) — that fix only merges
+  rows sharing a `flight_key` when the price is *also* identical, which was
+  enough for two sources (Google + Kayak) but won't hold once a third source
+  can disagree in more ways than "matches" or "doesn't". Discussed and
+  deliberately sequenced this way: designing the expand UI now, before
+  Skyscanner exists, means guessing at data it may not even have (leg-level
+  detail? a deep link? something Kayak's collapsed view doesn't print?).
+
+  Scope, once Skyscanner is actually being wired in:
+  - Add `backend/sources/skyscanner.py` implementing `SearchSource` (see
+    "Flight source architecture" in CLAUDE.md) — or, if it needs its own
+    render/extraction pipeline like Kayak, keep it opt-in and unregistered
+    from `get_sources()` the same way `KayakSource` is.
+  - Replace the price-match merge with an always-merge-by-`flight_key`
+    row: one row per physical flight, showing a price range (or the
+    cheapest, clearly marked) when sources disagree, instead of either
+    hiding the disagreement or listing several near-identical rows.
+  - Add an expandable section per row (click/toggle) surfacing:
+    - A per-source price breakdown, each with its own freshness/staleness —
+      `source_freshness` already computes this per source in
+      `_build_detail_context`, just not exposed per-row today.
+    - Full multi-leg flight detail — the Flight column already crams
+      multi-segment itineraries into one string (e.g. "IB 272+IB 1287");
+      expand into per-leg carrier/flight-number/times instead of the
+      joined string.
+  - `_group_duplicate_price_rows` was written with this in mind: the merge
+    step (group by `flight_key`) is already separate from the "only if
+    price matches" decision, so extending it later is a criteria change,
+    not a rewrite.
+
 ## Future (v2)
 - [ ] **City name autocomplete** — replace raw text inputs with city name search + autocomplete (e.g. type "Barcelona" → suggests BCN). Needs an airport/city dataset.
 - [ ] **Multicurrency** — Allow showing prices in any currency

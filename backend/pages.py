@@ -146,6 +146,15 @@ def _format_card_date(date_str: str) -> str:
 
 _env.filters["format_card_date"] = _format_card_date
 
+
+def _format_date_short(date_str: str) -> str:
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        return dt.strftime("%b %-d")
+    except (ValueError, TypeError):
+        return date_str
+
+
 LOGO_UNAVAILABLE_CODES: set[str] = set()
 
 _IATA_RE = re.compile(r"^[A-Z0-9]{2}$")
@@ -163,6 +172,87 @@ def _airline_code(flight_number: str | None) -> str:
 
 
 _env.filters["airline_code"] = _airline_code
+
+# Kayak's collapsed list view prints no flight number, so the flight_number ->
+# IATA code path (_airline_code above) never resolves for its rows. This maps
+# the full airline names Kayak/Google actually print to their IATA code, so
+# those rows can still get a logo. Deliberately excludes generated labels
+# like "Multiple airlines" (Kayak's own placeholder for a multi-carrier
+# self-transfer itinerary, not a bookable airline) -- an unmapped name falls
+# back to plain text, which is the correct outcome for those.
+_AIRLINE_NAME_TO_CODE: dict[str, str] = {
+    "TAP AIR PORTUGAL": "TP",
+    "TAP PORTUGAL": "TP",
+    "AZUL": "AD",
+    "AIR EUROPA": "UX",
+    "ITA AIRWAYS": "AZ",
+    "IBERIA": "IB",
+    "ARAJET": "DM",
+    "GOL": "G3",
+    "LUFTHANSA": "LH",
+    "AIR FRANCE": "AF",
+    "KLM": "KL",
+    "EMIRATES": "EK",
+    "TURKISH AIRLINES": "TK",
+    "UNITED": "UA",
+    "UNITED AIRLINES": "UA",
+    "AVIANCA": "AV",
+    "SWISS": "LX",
+    "BRITISH AIRWAYS": "BA",
+    "DELTA": "DL",
+    "DELTA AIR LINES": "DL",
+    "AIR CANADA": "AC",
+    "AEROMEXICO": "AM",
+    "LATAM": "LA",
+    "LATAM AIRLINES": "LA",
+    "AMERICAN AIRLINES": "AA",
+    "AMERICAN": "AA",
+    "EASYJET": "U2",
+    "VUELING": "VY",
+    "RYANAIR": "FR",
+    "NORWEGIAN": "DY",
+    "NORWEGIAN AIR SHUTTLE": "DY",
+    "FINNAIR": "AY",
+    "AUSTRIAN": "OS",
+    "AUSTRIAN AIRLINES": "OS",
+    "BRUSSELS AIRLINES": "SN",
+    "LOT POLISH AIRLINES": "LO",
+    "COPA AIRLINES": "CM",
+    "QATAR AIRWAYS": "QR",
+    "ETIHAD AIRWAYS": "EY",
+    "SINGAPORE AIRLINES": "SQ",
+    "CATHAY PACIFIC": "CX",
+    "ANA": "NH",
+    "ALL NIPPON AIRWAYS": "NH",
+    "JAPAN AIRLINES": "JL",
+    "ALASKA AIRLINES": "AS",
+    "JETBLUE": "B6",
+    "SOUTHWEST": "WN",
+    "WESTJET": "WS",
+    "AIR INDIA": "AI",
+    "ETHIOPIAN AIRLINES": "ET",
+    "KENYA AIRWAYS": "KQ",
+    "SOUTH AFRICAN AIRWAYS": "SA",
+    "ROYAL AIR MAROC": "AT",
+    "EGYPTAIR": "MS",
+    "SAUDIA": "SV",
+    "AEROFLOT": "SU",
+    "WIZZ AIR": "W6",
+    "VOLARIS": "Y4",
+}
+
+
+def _airline_code_from_name(name: str | None) -> str:
+    if not name:
+        return ""
+    key = " ".join(str(name).split()).upper()
+    code = _AIRLINE_NAME_TO_CODE.get(key, "")
+    if code in LOGO_UNAVAILABLE_CODES:
+        return ""
+    return code
+
+
+_env.filters["airline_code_from_name"] = _airline_code_from_name
 
 _CURRENCY_SYMBOLS: dict[str, str] = {"EUR": "€", "USD": "$", "GBP": "£", "CHF": "CHF "}
 _env.filters["currency_symbol"] = lambda c: _CURRENCY_SYMBOLS.get(c or "", (c or "") + " ")
@@ -187,7 +277,7 @@ def _split_timestamps(flight_dict: dict) -> None:
             time_part = time_with_tz.split("+")[0].split("-")[0].split("Z")[0]
             if len(time_part) >= 5:
                 time_part = time_part[:5]
-            flight_dict[key + "_date"] = _format_date(date_part)
+            flight_dict[key + "_date"] = _format_date_short(date_part)
             flight_dict[key + "_time"] = time_part + tz_suffix
             raw_dates[key] = date_part
     dep = raw_dates.get("departure_time")
@@ -209,6 +299,47 @@ def _compute_delta(current: float | None, reference: float | None) -> dict | Non
     if current > reference:
         return {"type": "up", "amount": round(current - reference, 2)}
     return {"type": "same"}
+
+
+def _group_duplicate_price_rows(flights_with_delta: list[dict]) -> list[dict]:
+    """Collapse rows that are true duplicates -- same flight_key AND the same
+    price, just quoted by more than one source -- into a single row listing
+    every source. Rows sharing a flight_key at DIFFERENT prices stay split:
+    that disagreement is the whole point of tracking more than one source,
+    so only an exact match is clutter rather than information.
+
+    The kept row's display fields (times, duration, flight number) come from
+    whichever source's row is seen first, except flight_number is adopted
+    from a later source if the first one didn't have one -- Kayak's
+    collapsed view never prints one, so a duplicate Google row shouldn't
+    lose it. Freshness (observed_at/age_minutes/is_stale) and the delta
+    badge come from whichever source observation is freshest.
+    """
+    grouped: list[dict] = []
+    merged_by_key: dict[tuple, dict] = {}
+    for item in flights_with_delta:
+        flight = item["flight"]
+        is_missing = item.get("delta", {}).get("type") == "missing"
+        group_key = (flight["flight_key"], flight["price"], is_missing)
+        existing = merged_by_key.get(group_key)
+        if existing is None:
+            merged_item = dict(item)
+            merged_item["flight"] = dict(flight)
+            merged_item["sources"] = [flight.get("source")]
+            merged_by_key[group_key] = merged_item
+            grouped.append(merged_item)
+            continue
+        existing["sources"].append(flight.get("source"))
+        if not existing["flight"].get("flight_number") and flight.get("flight_number"):
+            existing["flight"]["flight_number"] = flight.get("flight_number")
+        existing_age = existing["flight"].get("age_minutes")
+        new_age = flight.get("age_minutes")
+        if new_age is not None and (existing_age is None or new_age < existing_age):
+            existing["flight"]["observed_at"] = flight.get("observed_at")
+            existing["flight"]["age_minutes"] = new_age
+            existing["flight"]["is_stale"] = flight.get("is_stale")
+            existing["delta"] = item["delta"]
+    return grouped
 
 
 _MIN_SPAN_FRAC = 0.06
@@ -340,7 +471,7 @@ async def add_tracker(request: Request):
     await insert_log("INFO", "tracker_created", tracker_id=tracker["id"],
                      message=f"{tracker['origin']} -> {tracker['destination']}")
 
-    await backend.scheduler.search_and_store(tracker["id"])
+    await backend.scheduler.search_and_store(tracker["id"], delay=False)
     backend.scheduler.add_tracker_job(tracker["id"], tracker["interval_minutes"], run_immediately=False)
 
     summaries = _enrich_summaries(await get_tracker_summaries(), await get_best_price_series())
@@ -436,6 +567,8 @@ async def _build_detail_context(tracker_id: int) -> dict:
             continue
         prev_obs = previous_by_group.get(group)
         if prev_obs and row["snapshot_id"] == prev_obs["snapshot_id"]:
+            row["observed_at"] = prev_obs["searched_at"]
+            row["age_minutes"] = _age_minutes(prev_obs["searched_at"], newest_searched_at)
             prev_rows_by_group.setdefault(group, {}).setdefault(row["flight_key"], row)
 
     # rows is ORDER BY price ASC, and the per-snapshot ordering is preserved
@@ -621,6 +754,16 @@ async def _build_detail_context(tracker_id: int) -> dict:
     best_price_is_stale = bool(best_row and best_row.get("is_stale"))
     historical_best_price = await get_historical_best_price(tracker_id)
 
+    # Per-row sparkline for the results table -- one flight's own price history,
+    # reusing the same history_by_key data already fetched for the chart.
+    row_sparklines: dict[str, dict | None] = {}
+    for item in flights_with_delta:
+        key = item["flight"]["flight_key"]
+        if key in row_sparklines:
+            continue
+        prices = [p["y"] for p in history_by_key.get(key, [])]
+        row_sparklines[key] = _sparkline(prices, w=64, h=20, pad=2)
+
     source_freshness = [
         {
             "source": source,
@@ -630,14 +773,17 @@ async def _build_detail_context(tracker_id: int) -> dict:
         for source, obs in sorted(latest_by_group.items())
     ]
 
+    table_rows = _group_duplicate_price_rows(flights_with_delta)
+
     return {
         "tracker": tracker,
         "latest_snapshot": latest,
-        "flights_with_delta": flights_with_delta,
+        "flights_with_delta": table_rows,
         "chart_datasets": json.dumps(list(chart_datasets.values())),
         "all_flights": json.dumps(all_flights),
         "sticky_flight_keys": json.dumps(list(sticky_keys)),
         "flight_key_colors": flight_key_colors,
+        "row_sparklines": row_sparklines,
         "max_stops": max_stops,
         "max_duration": max_duration,
         "best_price": best_price,
@@ -659,7 +805,7 @@ async def tracker_detail(request: Request, tracker_id: int):
 
 @router.post("/trackers/{tracker_id}/search", response_class=HTMLResponse)
 async def search_now(request: Request, tracker_id: int):
-    await backend.scheduler.search_and_store(tracker_id)
+    await backend.scheduler.search_and_store(tracker_id, delay=False)
     ctx = await _build_detail_context(tracker_id)
     ctx["request"] = request
     return _render("partials/detail_page.html", ctx)
@@ -735,7 +881,7 @@ async def refresh_all(request: Request):
     trackers = await list_trackers()
     for tracker in trackers:
         if tracker["active"]:
-            await backend.scheduler.search_and_store(tracker["id"])
+            await backend.scheduler.search_and_store(tracker["id"], delay=False)
 
     summaries = _enrich_summaries(await get_tracker_summaries(), await get_best_price_series())
     upcoming, past = _split_by_departure(summaries)

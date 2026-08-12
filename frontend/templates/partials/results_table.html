@@ -1,39 +1,94 @@
 {% from "partials/macros.html" import airline_logo %}
+{% macro flight_row(item) %}
+{% set row_color = (flight_key_colors or {}).get(item.flight.flight_key) %}
+{% set spark = (row_sparklines or {}).get(item.flight.flight_key) %}
+<tr data-flight-key="{{ item.flight.flight_key }}"
+    data-stops="{{ item.flight.stops }}"
+    data-duration="{{ item.flight.duration_min if item.flight.duration_min is not none else '' }}"
+    data-airline="{{ item.flight.airline if item.flight.airline is not none else '' }}"
+    class="{% if item.delta and item.delta.type == 'missing' %}row-missing{% endif %}{% if row_color %} row-colored{% endif %}"
+    {% if row_color %}style="--row-color: {{ row_color }}"{% endif %}>
+    <td>{{ airline_logo(item.flight.flight_number, item.flight.airline) }}</td>
+    <td>{{ item.flight.get("departure_time_date", item.flight.get("departure_time", "—")) }}</td>
+    <td>{{ item.flight.get("departure_time_time", "—") }}</td>
+    <td>{{ item.flight.get("arrival_time_time", "—") }}{% set off = item.flight.get("arrival_day_offset", 0) or 0 %}{% if off > 0 %} <span class="day-offset">(+{{ off }} {{ "day" if off == 1 else "days" }})</span>{% endif %}</td>
+    <td>{% if item.flight.duration_min is not none %}{{ item.flight.duration_min // 60 }}h {{ "%02d"|format(item.flight.duration_min % 60) }}m{% else %}—{% endif %}</td>
+    <td>{{ item.flight.stops }}</td>
+    <td>{{ item.flight.flight_number or "—" }}</td>
+    <td class="trend-cell col-group-price col-group-start">
+        {% if spark %}
+        <svg class="spark spark-{{ spark.trend }} row-spark" viewBox="0 0 {{ spark.w }} {{ spark.h }}" preserveAspectRatio="none" aria-hidden="true">
+            <polygon class="spark-area" points="{{ spark.area }}"/>
+            <polyline class="spark-line" points="{{ spark.points }}"/>
+        </svg>
+        {% else %}
+        <span class="trend-empty">—</span>
+        {% endif %}
+    </td>
+    <td class="price-cell col-group-price">{{ item.flight.currency | currency_symbol }}{{ "%.0f"|format(item.flight.price) }}</td>
+    <td class="col-group-price">{% include "partials/price_badge.html" %}</td>
+    <td class="muted-cell source-cell col-group-meta col-group-start">{{ (item.sources or [item.flight.source]) | map("source_label") | join(", ") }}{% if item.flight.get("is_stale") %}<span class="price-age" title="Last seen {{ item.flight.get('age_minutes')|int }} min before the latest cycle">{{ item.flight.get("age_minutes")|int }}m ago</span>{% endif %}</td>
+    <td class="muted-cell col-group-meta">{% if item.flight.get("observed_at") %}<span class="last-checked" data-iso="{{ item.flight.observed_at }}">—</span>{% else %}—{% endif %}</td>
+</tr>
+{% endmacro %}
 <table class="results-table">
     <thead>
         <tr>
-            <th>Airline</th>
-            <th>Flight</th>
-            <th>Dep Date</th>
-            <th>Dep Time</th>
-            <th>Arr Time</th>
-            <th>Duration</th>
-            <th>Stops</th>
-            <th>Price</th>
-            <th>Source</th>
-            <th>Change</th>
+            <th rowspan="2">Airline</th>
+            <th colspan="2">Departure</th>
+            <th rowspan="2">Arr Time</th>
+            <th rowspan="2">Duration</th>
+            <th rowspan="2">Stops</th>
+            <th rowspan="2">Flight</th>
+            <th rowspan="2" class="col-group-price col-group-start">Trend</th>
+            <th rowspan="2" class="col-group-price">Price</th>
+            <th rowspan="2" class="col-group-price">Change</th>
+            <th rowspan="2" class="col-group-meta col-group-start">Source</th>
+            <th rowspan="2" class="col-group-meta">Fetched</th>
+        </tr>
+        <tr class="results-subheader">
+            <th>Date</th>
+            <th>Time</th>
         </tr>
     </thead>
     <tbody>
-        {% for item in flights_with_delta %}
-        {% set row_color = (flight_key_colors or {}).get(item.flight.flight_key) %}
-        <tr data-flight-key="{{ item.flight.flight_key }}"
-            data-stops="{{ item.flight.stops }}"
-            data-duration="{{ item.flight.duration_min if item.flight.duration_min is not none else '' }}"
-            data-airline="{{ item.flight.airline if item.flight.airline is not none else '' }}"
-            class="{% if item.delta and item.delta.type == 'missing' %}row-missing{% endif %}{% if row_color %} row-colored{% endif %}"
-            {% if row_color %}style="--row-color: {{ row_color }}"{% endif %}>
-            <td>{{ airline_logo(item.flight.flight_number, item.flight.airline) }}</td>
-            <td>{{ item.flight.flight_number or "—" }}</td>
-            <td>{{ item.flight.get("departure_time_date", item.flight.get("departure_time", "—")) }}</td>
-            <td>{{ item.flight.get("departure_time_time", "—") }}</td>
-            <td>{{ item.flight.get("arrival_time_time", "—") }}{% set off = item.flight.get("arrival_day_offset", 0) or 0 %}{% if off > 0 %} <span class="day-offset">(+{{ off }} {{ "day" if off == 1 else "days" }})</span>{% endif %}</td>
-            <td>{% if item.flight.duration_min is not none %}{{ item.flight.duration_min // 60 }}h {{ "%02d"|format(item.flight.duration_min % 60) }}m{% else %}—{% endif %}</td>
-            <td>{{ item.flight.stops }}</td>
-            <td class="price-cell">{{ item.flight.currency | currency_symbol }}{{ "%.0f"|format(item.flight.price) }}</td>
-            <td>{{ item.flight.source | source_label }}{% if item.flight.get("is_stale") %}<span class="price-age" title="Last seen {{ item.flight.get('age_minutes')|int }} min before the latest cycle">{{ item.flight.get("age_minutes")|int }}m ago</span>{% endif %}</td>
-            <td>{% include "partials/price_badge.html" %}</td>
-        </tr>
+        {% for item in flights_with_delta[:10] %}
+        {{ flight_row(item) }}
         {% endfor %}
     </tbody>
+    {% if flights_with_delta|length > 10 %}
+    <tbody class="results-more" id="results-more-body" hidden>
+        {% for item in flights_with_delta[10:] %}
+        {{ flight_row(item) }}
+        {% endfor %}
+    </tbody>
+    <tbody>
+        <tr class="results-more-toggle-row">
+            <td colspan="12">
+                <button type="button" class="results-more-toggle" id="results-more-toggle" data-more-count="{{ flights_with_delta|length - 10 }}">
+                    See {{ flights_with_delta|length - 10 }} more
+                </button>
+            </td>
+        </tr>
+    </tbody>
+    {% endif %}
 </table>
+{% if flights_with_delta|length > 10 %}
+<script>
+(function () {
+    var btn = document.getElementById("results-more-toggle");
+    var body = document.getElementById("results-more-body");
+    if (!btn || !body) return;
+    btn.addEventListener("click", function () {
+        var moreCount = btn.getAttribute("data-more-count");
+        if (body.hasAttribute("hidden")) {
+            body.removeAttribute("hidden");
+            btn.textContent = "See fewer";
+        } else {
+            body.setAttribute("hidden", "");
+            btn.textContent = "See " + moreCount + " more";
+        }
+    });
+})();
+</script>
+{% endif %}
