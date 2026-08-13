@@ -26,6 +26,7 @@ import sys
 from backend.sources.kayak import (
     _RENDER_TIMEOUT_S,
     _RESULT_MARKERS,
+    _WARMUP_TIMEOUT_S,
     KayakRenderConfig,
     _context_options,
     _launch_args,
@@ -93,7 +94,7 @@ async def render(url: str, config: KayakRenderConfig) -> str:
             page = context.pages[0] if context.pages else await context.new_page()
 
             for warmup_url, dwell in _warmup_sequence(config):
-                await page.goto(warmup_url, timeout=_RENDER_TIMEOUT_S * 1000)
+                await page.goto(warmup_url, timeout=_WARMUP_TIMEOUT_S * 1000)
                 await asyncio.sleep(dwell)
 
             await page.goto(url, timeout=_RENDER_TIMEOUT_S * 1000)

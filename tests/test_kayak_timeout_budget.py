@@ -14,15 +14,25 @@ constant-vs-constant assertion catches and a live smoke test does not.
 
 CLAUDE.md already warned "if changing either render/LLM timeout, re-check the
 arithmetic still leaves slack". This file is that check, executable.
+
+Plan 024 Phase 3 found the same rot one level down: the 2.5x worker factor was
+itself written from a two-wait premise while the child performs three capped
+waits plus the warmup dwell (140s of legitimate waiting against a 112.5s kill
+cap). The factor is gone; the budget is now an explicit sum, and
+`test_the_worker_cap_covers_every_wait_the_child_performs` reads the waits out
+of the worker's own source so a fourth one cannot be added unnoticed.
 """
 
-from backend.sources import kayak
+import re
+from pathlib import Path
+
+from backend.sources import kayak, kayak_render
 
 
 def _worst_case() -> float:
     """Everything `_search_inner` can spend before the overall cap fires:
     the worker's own cap, then the LLM call."""
-    return kayak._WORKER_TIMEOUT_FACTOR * kayak._RENDER_TIMEOUT_S + kayak._LLM_TIMEOUT_S
+    return kayak._WORKER_TIMEOUT_S + kayak._LLM_TIMEOUT_S
 
 
 def test_overall_timeout_exceeds_worst_case_render_plus_llm():
@@ -50,7 +60,10 @@ def test_the_budget_is_derived_not_hardcoded():
     try:
         kayak._RENDER_TIMEOUT_S = original * 2
         recomputed = (
-            kayak._WORKER_TIMEOUT_FACTOR * kayak._RENDER_TIMEOUT_S
+            kayak._WARMUP_TIMEOUT_S
+            + kayak._MAX_WARMUP_DWELL_S
+            + 2 * kayak._RENDER_TIMEOUT_S
+            + kayak._WORKER_STARTUP_ALLOWANCE_S
             + kayak._LLM_TIMEOUT_S
             + 30.0
         )
@@ -62,11 +75,47 @@ def test_the_budget_is_derived_not_hardcoded():
         kayak._RENDER_TIMEOUT_S = original
 
 
-def test_the_worker_cap_covers_both_render_waits():
-    """The child runs page.goto's cap and _wait_for_results_stable's cap in
-    sequence, so its own budget must clear both plus browser startup."""
-    worker_budget = kayak._WORKER_TIMEOUT_FACTOR * kayak._RENDER_TIMEOUT_S
-    assert worker_budget > 2 * kayak._RENDER_TIMEOUT_S, (
-        "the render worker can be killed while still inside its own two "
-        "legitimate waits"
+def _worker_wait_caps() -> list[str]:
+    """Every bounded wait `kayak_render.render` performs, named by the constant
+    that caps it, read out of the worker's own source.
+
+    Read from source rather than listed by hand on purpose: a hand-written list
+    is a second premise that can rot exactly the way the 2.5x factor did. A
+    `page.goto(..., timeout=X * 1000)` and a `cap_seconds: float = X` default
+    are the only two shapes the worker uses to bound a wait; the warmup dwell is
+    an unbounded `asyncio.sleep` and is accounted for separately by
+    `_MAX_WARMUP_DWELL_S`.
+    """
+    source = Path(kayak_render.__file__).read_text(encoding="utf-8")
+    names = re.findall(r"timeout=([A-Za-z_][A-Za-z_0-9]*) \* 1000", source)
+    names += re.findall(r"cap_seconds: float = ([A-Za-z_][A-Za-z_0-9]*)", source)
+    return names
+
+
+def test_the_worker_cap_covers_every_wait_the_child_performs():
+    """The child runs the warmup goto, the warmup dwell, the main goto and
+    _wait_for_results_stable in sequence, so its own budget must clear all four
+    plus interpreter and browser startup.
+
+    The 2.5x factor it replaced was written for two of those four and cleared
+    112.5s against 140s of waits the code itself still permitted.
+    """
+    names = _worker_wait_caps()
+    assert len(names) == 3, (
+        f"the render worker performs {len(names)} capped waits {names}, not the "
+        "3 this budget was sized for -- re-derive _WORKER_TIMEOUT_S before "
+        "updating this count"
     )
+
+    total = sum(getattr(kayak, name) for name in names) + kayak._MAX_WARMUP_DWELL_S
+    assert kayak._WORKER_TIMEOUT_S >= total, (
+        f"_WORKER_TIMEOUT_S ({kayak._WORKER_TIMEOUT_S}s) kills the worker while "
+        f"it is still inside waits the worker's own code permits ({total}s from "
+        f"{names} plus the {kayak._MAX_WARMUP_DWELL_S}s warmup dwell)"
+    )
+
+
+def test_the_warmup_dwell_bound_matches_the_config_it_claims_to_bound():
+    """_MAX_WARMUP_DWELL_S is only an honest budget line while it really is the
+    upper bound of the dwell _warmup_sequence draws."""
+    assert kayak.KayakRenderConfig().warmup_dwell_s[1] == kayak._MAX_WARMUP_DWELL_S

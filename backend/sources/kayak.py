@@ -44,12 +44,28 @@ _RENDER_TIMEOUT_S = 45.0
 # lost data point by design (3b.5: a hard cap stays regardless of model).
 _LLM_TIMEOUT_S = 60.0
 _RENDER_WORKER_MODULE = "backend.sources.kayak_render"
-# The worker performs both render waits in sequence (page.goto's own cap plus
-# _wait_for_results_stable's separate one), so the parent's cap has to clear
-# 2 * _RENDER_TIMEOUT_S with room for interpreter and browser startup. Kept as
-# a factor rather than an added constant so that changing _RENDER_TIMEOUT_S
-# moves both together.
-_WORKER_TIMEOUT_FACTOR = 2.5
+
+# The worker's cap is an explicit SUM of the waits the child actually performs,
+# not a factor over _RENDER_TIMEOUT_S. Plan 021 wrote that factor (2.5) from a
+# two-wait premise -- page.goto plus _wait_for_results_stable -- but the child
+# runs FOUR waits in sequence: the warmup goto, the warmup dwell, the main goto
+# and the stable-wait. At 2.5 that was 112.5s of budget against 140s of waiting
+# the worker's own code permits, so a slow-but-healthy render could be killed
+# mid-page. A factor hides that arithmetic; a sum states it, and
+# `tests/test_kayak_timeout_budget.py` reads the waits out of kayak_render.py
+# so a fifth one cannot be added without failing the suite.
+#
+# The warmup goto gets its own, tighter cap: it loads the homepage, not a
+# results page, so it has no reason to need the full render budget.
+_WARMUP_TIMEOUT_S = 20.0
+_MAX_WARMUP_DWELL_S = 5.0
+_WORKER_STARTUP_ALLOWANCE_S = 15.0
+_WORKER_TIMEOUT_S = (
+    _WARMUP_TIMEOUT_S
+    + _MAX_WARMUP_DWELL_S
+    + 2 * _RENDER_TIMEOUT_S
+    + _WORKER_STARTUP_ALLOWANCE_S
+)
 
 # Extra itineraries requested so that duplicates removed by _dedupe_rows do not
 # shrink the stored result set. 2 covers the observed case (one repeated fare
@@ -74,9 +90,9 @@ _NIGHT_ROLLOVER_CUTOFF_HOUR = 3
 # mid-extraction (`outcome: error`, `extracted_rows: 0`). Successful runs take
 # 62-67s, so only the slow tail hits it, which is why it survived Phase 3's
 # verification. Keep this derived: it must always exceed the worst case the
-# two sub-timeouts can actually produce, and `test_kayak_timeout_budget.py`
+# sub-timeouts can actually produce, and `test_kayak_timeout_budget.py`
 # fails if the slack ever narrows again.
-_OVERALL_TIMEOUT_S = _WORKER_TIMEOUT_FACTOR * _RENDER_TIMEOUT_S + _LLM_TIMEOUT_S + 30.0
+_OVERALL_TIMEOUT_S = _WORKER_TIMEOUT_S + _LLM_TIMEOUT_S + 30.0
 
 # The first six were written from guesses before any block had been seen and
 # matched NONE of the interstitial Kayak actually served (Phase 6, 2026-08-04)
@@ -204,7 +220,7 @@ class KayakRenderConfig:
     timezone_id: str = "America/Sao_Paulo"
     viewport: dict = field(default_factory=lambda: {"width": 1920, "height": 1080})
     warmup_url: str | None = "https://www.kayak.com/"
-    warmup_dwell_s: tuple[float, float] = (2.0, 5.0)
+    warmup_dwell_s: tuple[float, float] = (2.0, _MAX_WARMUP_DWELL_S)
     stealth: bool = True
     # Names the arm a captured sample belongs to, so past samples stay
     # re-classifiable once the bundle changes (plan 018 task 2.4).
@@ -717,7 +733,7 @@ class KayakSource:
             json.dumps(asdict(self.config)),
             out_path,
         )
-        timeout = _WORKER_TIMEOUT_FACTOR * _RENDER_TIMEOUT_S
+        timeout = _WORKER_TIMEOUT_S
 
         try:
             proc = await _spawn_render_worker(*argv)
