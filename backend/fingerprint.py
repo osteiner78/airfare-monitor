@@ -1,3 +1,4 @@
+from backend.airlines import AIRLINE_NAME_TO_CODE
 from backend.sources.base import FlightResult
 
 
@@ -6,9 +7,14 @@ def _normalize_airline(airline: str) -> str:
     # captured bodies and the live flight_prices table), so a case-sensitive
     # airline segment forks one physical flight into two identities across
     # sources -- the exact failure this key format exists to prevent.
-    # ASCII-equivalent to the backfill's LOWER(TRIM(...)) for every airline
-    # string in the production table (checked before plan 019's migration).
-    return " ".join((airline or "").split()).casefold()
+    # Casefolding alone only bridges CASE differences: Google/fli prints
+    # "LATAM"/"ITA" where Kayak prints "LATAM Airlines"/"ITA Airways", and
+    # those forked in production (plan 024 phase 4). Mapped names collapse to
+    # their IATA code; unmapped names keep the casefolded form. The SQL
+    # LOWER(TRIM(...)) shortcut is now doubly wrong -- it cannot consult the
+    # map -- so the backfill must keep calling this function.
+    normalized = " ".join((airline or "").split())
+    return (AIRLINE_NAME_TO_CODE.get(normalized.upper()) or normalized).casefold()
 
 
 def make_flight_key(result: FlightResult) -> str:

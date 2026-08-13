@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from backend.airlines import AIRLINE_NAME_TO_CODE
 from backend.db import (
     DEFAULT_INTERVAL_MINUTES,
     create_tracker,
@@ -181,73 +182,10 @@ def _airline_code(flight_number: str | None) -> str:
 _env.filters["airline_code"] = _airline_code
 
 # Kayak's collapsed list view prints no flight number, so the flight_number ->
-# IATA code path (_airline_code above) never resolves for its rows. This maps
-# the full airline names Kayak/Google actually print to their IATA code, so
-# those rows can still get a logo. Deliberately excludes generated labels
-# like "Multiple airlines" (Kayak's own placeholder for a multi-carrier
-# self-transfer itinerary, not a bookable airline) -- an unmapped name falls
-# back to plain text, which is the correct outcome for those.
-_AIRLINE_NAME_TO_CODE: dict[str, str] = {
-    "TAP AIR PORTUGAL": "TP",
-    "TAP PORTUGAL": "TP",
-    "AZUL": "AD",
-    "AIR EUROPA": "UX",
-    "ITA AIRWAYS": "AZ",
-    "ITA": "AZ",
-    "IBERIA": "IB",
-    "ARAJET": "DM",
-    "GOL": "G3",
-    "LUFTHANSA": "LH",
-    "AIR FRANCE": "AF",
-    "KLM": "KL",
-    "EMIRATES": "EK",
-    "TURKISH AIRLINES": "TK",
-    "UNITED": "UA",
-    "UNITED AIRLINES": "UA",
-    "AVIANCA": "AV",
-    "SWISS": "LX",
-    "BRITISH AIRWAYS": "BA",
-    "DELTA": "DL",
-    "DELTA AIR LINES": "DL",
-    "AIR CANADA": "AC",
-    "AEROMEXICO": "AM",
-    "LATAM": "LA",
-    "LATAM AIRLINES": "LA",
-    "AMERICAN AIRLINES": "AA",
-    "AMERICAN": "AA",
-    "EASYJET": "U2",
-    "VUELING": "VY",
-    "RYANAIR": "FR",
-    "NORWEGIAN": "DY",
-    "NORWEGIAN AIR SHUTTLE": "DY",
-    "FINNAIR": "AY",
-    "AUSTRIAN": "OS",
-    "AUSTRIAN AIRLINES": "OS",
-    "BRUSSELS AIRLINES": "SN",
-    "LOT POLISH AIRLINES": "LO",
-    "COPA AIRLINES": "CM",
-    "QATAR AIRWAYS": "QR",
-    "ETIHAD AIRWAYS": "EY",
-    "SINGAPORE AIRLINES": "SQ",
-    "CATHAY PACIFIC": "CX",
-    "ANA": "NH",
-    "ALL NIPPON AIRWAYS": "NH",
-    "JAPAN AIRLINES": "JL",
-    "ALASKA AIRLINES": "AS",
-    "JETBLUE": "B6",
-    "SOUTHWEST": "WN",
-    "WESTJET": "WS",
-    "AIR INDIA": "AI",
-    "ETHIOPIAN AIRLINES": "ET",
-    "KENYA AIRWAYS": "KQ",
-    "SOUTH AFRICAN AIRWAYS": "SA",
-    "ROYAL AIR MAROC": "AT",
-    "EGYPTAIR": "MS",
-    "SAUDIA": "SV",
-    "AEROFLOT": "SU",
-    "WIZZ AIR": "W6",
-    "VOLARIS": "Y4",
-}
+# IATA code path (_airline_code above) never resolves for its rows. The shared
+# name -> code map (backend/airlines.py) lets those rows still get a logo, and
+# is the same map fingerprint.py uses for the flight_key identity.
+_AIRLINE_NAME_TO_CODE = AIRLINE_NAME_TO_CODE
 
 
 def _airline_code_from_name(name: str | None) -> str:
