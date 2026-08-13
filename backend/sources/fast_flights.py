@@ -22,7 +22,9 @@ class FastFlightsSource:
 
         try:
             import fast_flights  # noqa: F401
-        except ImportError:
+        except ImportError as e:
+            self.last_error = f"import failed: {type(e).__name__}: {e}"
+            self.last_error_level = "ERROR"
             return []
 
         try:

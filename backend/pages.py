@@ -61,6 +61,13 @@ def _blend_group(source: str) -> str:
     return _BLEND_GROUPS.get(source, source)
 
 
+# Independent of DEFAULT_INTERVAL_MINUTES: this is a floor on how stale a
+# source's rows may be before they're dropped from the blend, not a fallback
+# for a missing interval. A tracker with a very short interval must still
+# tolerate at least this many minutes of source lag.
+_MIN_SOURCE_STALENESS_FLOOR_MINUTES = 60
+
+
 def _age_minutes(observed_at, newest_at) -> float:
     """How far behind the newest observation this one is, in minutes.
 
@@ -548,7 +555,10 @@ async def _build_detail_context(tracker_id: int) -> dict:
     # Beyond this, a source's rows are dropped rather than shown: a fare from
     # several cycles ago is not "current" in any useful sense, and quietly
     # presenting it as such is worse than showing nothing.
-    max_age_minutes = max(2 * (tracker["interval_minutes"] or 60), 60)
+    max_age_minutes = max(
+        2 * (tracker["interval_minutes"] or DEFAULT_INTERVAL_MINUTES),
+        _MIN_SOURCE_STALENESS_FLOOR_MINUTES,
+    )
     newest_searched_at = latest["searched_at"] if latest else None
 
     # Blend by GROUP, not by raw source. `google_flights` and `fast_flights`
@@ -904,7 +914,7 @@ async def toggle_tracker_kayak(request: Request, tracker_id: int):
     if tracker is None:
         raise HTTPException(status_code=404, detail="Tracker not found")
 
-    new_kayak_enabled = not tracker["kayak_enabled"]
+    new_kayak_enabled = not tracker.get("kayak_enabled")
     await update_tracker(tracker_id, kayak_enabled=new_kayak_enabled)
 
     if new_kayak_enabled:

@@ -94,6 +94,29 @@ async def test_post_search_returns_200(client):
     assert response.status_code == 200
 
 
+async def test_post_search_calls_search_and_store_with_delay_false(client):
+    """A manual trigger must return promptly -- delay=True (the default)
+    means a 0-15 min asyncio.sleep before Kayak renders, which would hang
+    this synchronous HTTP request for up to 15 minutes."""
+    import backend.scheduler
+
+    created = (await client.post("/api/trackers", json=TRACKER_PAYLOAD)).json()
+    backend.scheduler.search_and_store.reset_mock()
+    response = await client.post(f"/api/trackers/{created['id']}/search")
+
+    assert response.status_code == 200
+    backend.scheduler.search_and_store.assert_called_once_with(created["id"], delay=False)
+
+
+async def test_post_trackers_calls_search_and_store_with_delay_false(client):
+    import backend.scheduler
+
+    response = await client.post("/api/trackers", json=TRACKER_PAYLOAD)
+    tracker_id = response.json()["id"]
+
+    backend.scheduler.search_and_store.assert_called_once_with(tracker_id, delay=False)
+
+
 # --- validation failure modes ---
 
 async def test_post_trackers_returns_422_when_origin_is_missing(client):

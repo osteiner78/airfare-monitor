@@ -39,7 +39,7 @@ async def create_tracker_endpoint(payload: TrackerCreate) -> TrackerResponse:
     tracker = await create_tracker(**payload.model_dump(exclude_none=True))
     await insert_log("INFO", "tracker_created", tracker_id=tracker["id"],
                      message=f"{tracker['origin']} -> {tracker['destination']}")
-    await backend.scheduler.search_and_store(tracker["id"])
+    await backend.scheduler.search_and_store(tracker["id"], delay=False)
     backend.scheduler.add_tracker_job(tracker["id"], tracker["interval_minutes"], run_immediately=False)
     return TrackerResponse(**tracker)
 
@@ -103,7 +103,7 @@ async def search_now_endpoint(tracker_id: int):
     tracker = await get_tracker(tracker_id)
     if tracker is None:
         raise HTTPException(status_code=404, detail="Tracker not found")
-    await backend.scheduler.search_and_store(tracker_id)
+    await backend.scheduler.search_and_store(tracker_id, delay=False)
     return {"status": "ok"}
 
 

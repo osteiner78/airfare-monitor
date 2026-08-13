@@ -398,3 +398,18 @@ async def test_toggle_kayak_endpoint_flips_kayak_enabled(client):
 async def test_toggle_kayak_endpoint_returns_404_for_missing_tracker(client):
     response = await client.patch("/trackers/999/toggle-kayak")
     assert response.status_code == 404
+
+
+async def test_toggle_kayak_endpoint_survives_tracker_row_without_kayak_column(client):
+    """Same un-migrated-table window as search_and_store: a bracket read of
+    tracker["kayak_enabled"] would KeyError instead of degrading to 'off'."""
+    from backend.db import get_tracker
+
+    await client.post("/api/trackers", json=TRACKER)
+    tracker = await get_tracker(1)
+    unmigrated = {k: v for k, v in tracker.items() if k != "kayak_enabled"}
+
+    with patch("backend.pages.get_tracker", AsyncMock(return_value=unmigrated)):
+        response = await client.patch("/trackers/1/toggle-kayak")  # must not raise
+
+    assert response.status_code == 200

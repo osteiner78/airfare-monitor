@@ -54,6 +54,22 @@ async def test_google_flights_returns_empty_list_when_fli_raises_import_error():
     assert result == []
 
 
+async def test_google_flights_import_error_sets_last_error():
+    """A broken fli import used to return [] with last_error left None --
+    indistinguishable from a genuine zero-result search, and invisible on
+    /monitor since that's the only channel search_error reaches."""
+    with patch.dict(sys.modules, {"flights": None}):
+        import importlib
+        import backend.sources.google_flights as gf_mod
+        importlib.reload(gf_mod)
+        source = gf_mod.GoogleFlightsSource()
+        result = await source.search("GVA", "BCN", "2026-06-15", None, "EUR", 5)
+    assert result == []
+    assert source.last_error is not None
+    assert "ImportError" in source.last_error
+    assert source.last_error_level == "ERROR"
+
+
 async def test_google_flights_returns_empty_list_when_search_raises_exception():
     from backend.sources.google_flights import GoogleFlightsSource
     source = GoogleFlightsSource()

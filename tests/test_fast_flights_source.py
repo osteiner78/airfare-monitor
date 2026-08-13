@@ -106,6 +106,23 @@ async def test_fast_flights_returns_empty_list_when_library_raises_not_found():
     assert source.last_error_level == "WARNING"
 
 
+async def test_fast_flights_import_error_sets_last_error():
+    """A broken fast_flights import used to return [] with last_error left
+    None -- indistinguishable from a genuine zero-result search, and invisible
+    on /monitor since that's the only channel search_error reaches."""
+    import sys
+    from backend.sources.fast_flights import FastFlightsSource
+
+    source = FastFlightsSource()
+    with patch.dict(sys.modules, {"fast_flights": None}):
+        result = await source.search("GVA", "BCN", "2026-09-15", None, "EUR", 5)
+
+    assert result == []
+    assert source.last_error is not None
+    assert "import failed" in source.last_error
+    assert source.last_error_level == "ERROR"
+
+
 async def test_fast_flights_returns_empty_list_and_records_error_when_search_raises_exception():
     from backend.sources.fast_flights import FastFlightsSource
     source = FastFlightsSource()
