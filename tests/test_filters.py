@@ -257,8 +257,14 @@ async def test_duration_slider_max_is_zero_when_all_durations_null(client):
 #   distinct) need that markup, so they FAIL until phase 2 lands.
 #
 # Markup contract for the airline checklist (one per airline, cheapest first):
-#   <input type="checkbox" class="filter-airline" value="{name}" checked>
+#   <input type="checkbox" class="filter-airline" value="{identity_key}" checked>
 #   ... visible "{name or 'Unknown'}" ... "({count})" ... "{best:.2f} {currency}"
+#
+# Plan 024 phase 5 (F3/A6): value/window.allFlights.airline changed from the
+# display name to the stable _airline_identity key -- the display name can
+# flip between cycles depending on which source's row is first in the blend,
+# which used to invert a persisted (localStorage) filter selection on reload.
+# The two tests below were rewritten (assertions, not just fixtures) to match.
 # ===========================================================================
 
 
@@ -273,7 +279,12 @@ def _sidebar(text: str) -> str:
 # --- Phase 1: data contract -------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_all_flights_entry_includes_airline(client):
+async def test_all_flights_entry_airline_is_the_stable_identity_key(client):
+    # Plan 024 phase 5 (F3/A6): window.allFlights.airline is the stable
+    # _airline_identity key, not the display name, so filters.js keeps
+    # matching a saved selection even when the display name flips between
+    # cycles. "Vueling" is mapped in AIRLINE_NAME_TO_CODE to "VY", so its
+    # identity key is that code, not the casefolded name.
     from backend.db import create_snapshot, insert_flight_prices
     await _make_tracker(client)
     snap = await create_snapshot(1, results_count=1)
@@ -284,7 +295,7 @@ async def test_all_flights_entry_includes_airline(client):
     response = await client.get("/trackers/1")
     all_flights = _extract_js_global(response.text, "allFlights")
     assert all_flights is not None, "window.allFlights not emitted"
-    assert all_flights[0].get("airline") == "Vueling"
+    assert all_flights[0].get("airline") == "VY"
 
 
 @pytest.mark.asyncio
@@ -348,7 +359,11 @@ async def test_sidebar_renders_one_airline_checkbox_per_distinct_airline(client)
 
 
 @pytest.mark.asyncio
-async def test_airline_checkbox_value_is_airline_name(client):
+async def test_airline_checkbox_value_is_the_stable_identity_key(client):
+    # Plan 024 phase 5 (F3/A6): the checkbox value is the stable identity key
+    # ("VY", Vueling's mapped IATA code), not the display name ("Vueling") --
+    # see the module-level note above. The visible label still shows the
+    # pretty name.
     from backend.db import create_snapshot, insert_flight_prices
     await _make_tracker(client)
     snap = await create_snapshot(1, results_count=1)
@@ -357,7 +372,9 @@ async def test_airline_checkbox_value_is_airline_name(client):
     ])
 
     response = await client.get("/trackers/1")
-    assert 'class="filter-airline" value="Vueling"' in _sidebar(response.text)
+    sidebar = _sidebar(response.text)
+    assert 'class="filter-airline" value="VY"' in sidebar
+    assert "Vueling" in sidebar
 
 
 @pytest.mark.asyncio
@@ -420,7 +437,9 @@ async def test_airlines_sorted_by_best_price_ascending(client):
 
     response = await client.get("/trackers/1")
     sidebar = _sidebar(response.text)
-    assert sidebar.index('value="Vueling"') < sidebar.index('value="Iberia"')
+    # Plan 024 phase 5: checkbox value is the identity key (IATA code for a
+    # mapped carrier), not the display name -- see the note above.
+    assert sidebar.index('value="VY"') < sidebar.index('value="IB"')
 
 
 @pytest.mark.asyncio
@@ -461,3 +480,112 @@ async def test_no_airline_checkbox_when_no_snapshot(client):
     response = await client.get("/trackers/1")
     assert response.status_code == 200
     assert 'class="filter-airline"' not in response.text
+
+
+# ---------------------------------------------------------------------------
+# Plan 024 phase 5 (F3/A6) — checkbox identity is stable across blend composition
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_airline_checkbox_value_is_byte_identical_across_blend_composition(client):
+    # F3/A6: before this fix, the checkbox value was seeded from group["name"]
+    # -- whichever variant's row happened to be first in price order -- so it
+    # flipped between "LATAM AIRLINES" (Kayak-only cycle) and "LATAM" (once
+    # google_flights also lists the flight). A persisted (localStorage)
+    # unchecked-airline selection keyed on that value would silently re-check
+    # itself the moment the display name changed. The fix makes the value the
+    # stable _airline_identity key ("LA" for both variants), so it must be
+    # byte-identical across both blend compositions.
+    from backend.db import create_snapshot, insert_flight_prices
+
+    await _make_tracker(client)
+
+    kayak_only = await create_snapshot(1, results_count=1)
+    await insert_flight_prices(kayak_only["id"], 1, [
+        _price("la|2026-09-15T08:00:00|2026-09-15T10:00:00", 800,
+               airline="LATAM AIRLINES", source="kayak"),
+    ])
+    response_1 = await client.get("/trackers/1")
+    sidebar_1 = _sidebar(response_1.text)
+    match_1 = re.search(r'class="filter-airline" value="([^"]*)"', sidebar_1)
+    assert match_1 is not None, "no airline checkbox rendered in kayak-only cycle"
+
+    blended = await create_snapshot(1, results_count=2)
+    await insert_flight_prices(blended["id"], 1, [
+        _price("la|2026-09-15T08:00:00|2026-09-15T10:00:00", 790,
+               airline="LATAM", source="google_flights"),
+        _price("la|2026-09-15T08:00:00|2026-09-15T10:00:00", 800,
+               airline="LATAM AIRLINES", source="kayak"),
+    ])
+    response_2 = await client.get("/trackers/1")
+    sidebar_2 = _sidebar(response_2.text)
+    match_2 = re.search(r'class="filter-airline" value="([^"]*)"', sidebar_2)
+    assert match_2 is not None, "no airline checkbox rendered in blended cycle"
+
+    assert match_1.group(1) == match_2.group(1)
+
+
+# ---------------------------------------------------------------------------
+# Plan 024 phase 5 (A12/F10) — a source cannot appear twice in a merged row
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_merged_row_lists_each_source_once(client):
+    # A12/F10: _group_duplicate_price_rows appended every matching row's
+    # source unconditionally, so an unlikely-but-possible pair of rows from
+    # the SAME source at the same flight_key/price (e.g. a dedupe upstream
+    # that let one through twice) rendered "Kayak, Kayak" instead of "Kayak".
+    from backend.db import create_snapshot, insert_flight_prices
+
+    await _make_tracker(client)
+    snap = await create_snapshot(1, results_count=2)
+    await insert_flight_prices(snap["id"], 1, [
+        _price("la|2026-09-15T08:00:00|2026-09-15T10:00:00", 800, source="kayak"),
+        _price("la|2026-09-15T08:00:00|2026-09-15T10:00:00", 800, source="kayak"),
+    ])
+
+    response = await client.get("/trackers/1")
+    assert response.status_code == 200
+    assert "Kayak, Kayak" not in response.text
+
+
+def test_group_duplicate_price_rows_dedupes_sources():
+    from backend.pages import _group_duplicate_price_rows
+
+    flight = {
+        "flight_key": "la|2026-09-15T08:00:00|2026-09-15T10:00:00",
+        "price": 800.0, "source": "kayak", "age_minutes": 5, "is_stale": False,
+    }
+    rows = [
+        {"flight": dict(flight), "delta": {"type": "same"}},
+        {"flight": dict(flight), "delta": {"type": "same"}},
+    ]
+
+    grouped = _group_duplicate_price_rows(rows)
+
+    assert len(grouped) == 1
+    assert grouped[0]["sources"] == ["kayak"]
+
+
+# ---------------------------------------------------------------------------
+# Plan 024 phase 5 (A11/F4) — _relative_minutes boundary table
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("minutes,expected", [
+    (0, "just now"),
+    (1, "1m ago"),
+    (59, "59m ago"),
+    (60, "1h ago"),
+    (1439, "23h ago"),
+    (1440, "1d ago"),
+])
+def test_relative_minutes_boundaries(minutes, expected):
+    # Counterpart: base.html::updateRelativeTimes() buckets the client-side
+    # "Fetched" column with the identical mins -> hours -> days thresholds,
+    # so a staleness badge rendered server-side reads the same as the
+    # client-refreshed one next to it. If either side's thresholds drift,
+    # this test and that function silently disagree -- check both when
+    # changing one.
+    from backend.pages import _relative_minutes
+
+    assert _relative_minutes(minutes) == expected

@@ -298,7 +298,7 @@ def _group_duplicate_price_rows(flights_with_delta: list[dict]) -> list[dict]:
             merged_by_key[group_key] = merged_item
             grouped.append(merged_item)
             continue
-        existing["sources"].append(flight.get("source"))
+        existing["sources"] = list(dict.fromkeys(existing["sources"] + [flight.get("source")]))
         if not existing["flight"].get("flight_number") and flight.get("flight_number"):
             existing["flight"]["flight_number"] = flight.get("flight_number")
         existing_age = existing["flight"].get("age_minutes")
@@ -725,7 +725,7 @@ async def _build_detail_context(tracker_id: int) -> dict:
         key = _airline_identity(raw_name)
         group = airline_groups.get(key)
         if group is None:
-            group = {"name": raw_name, "count": 0, "best_price": f["price"]}
+            group = {"key": key, "name": raw_name, "count": 0, "best_price": f["price"]}
             airline_groups[key] = group
         elif raw_name and group["name"].isupper() and not raw_name.isupper():
             # Prefer the naturally-cased form over an ALL-CAPS one for display.
@@ -734,8 +734,12 @@ async def _build_detail_context(tracker_id: int) -> dict:
         if f["price"] < group["best_price"]:
             group["best_price"] = f["price"]
 
+    # The checkbox value / filters.js identity is the stable group key, not
+    # group["name"] -- the display name can flip between cycles depending on
+    # which source's row happens to be first in the blend (see the comment
+    # above), which used to invert a persisted filter selection on reload.
     for f in all_flights:
-        f["airline"] = airline_groups[_airline_identity(f["airline"])]["name"]
+        f["airline"] = airline_groups[_airline_identity(f["airline"])]["key"]
 
     airlines = sorted(airline_groups.values(), key=lambda a: (a["best_price"], a["name"]))
 
