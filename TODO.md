@@ -29,12 +29,20 @@
 - [ ] Add a selection box besides all flights, when checked it adds it to the chart -> will require storing historical prices for all flights
 - [x] **Remove Arrival Date**: leave only departure date. If arrival date is next day, add string "(+1 day)" beside the arrival time
 - [ ] **Fetch per-flight booking URLs** — using fli's `get_booking_options()`.
+- [ ] **A stale source silently vanishes from the detail page.** Noted in the
+  022/023 code review (N7) and left as a UI gap, not a correctness bug —
+  `/monitor` still carries the WARNING when a source ages out past
+  `2 * interval_minutes` (see "Sources are BLENDED per source" in CLAUDE.md),
+  but the detail page itself gives no visible signal that a source is missing
+  rather than simply having no cheaper fares. Some indicator (a greyed-out
+  source chip, a "Kayak last seen Xh ago" note) would make the gap visible
+  without digging into `/monitor`.
 
 
 ## Roadmap
 
 ### Code review — do this BEFORE Passengers
-- [ ] **Audit the codebase for cross-file invariants that nothing pins.** Added
+- [x] **Audit the codebase for cross-file invariants that nothing pins.** Added
   2026-08-12 after a run of defects that were not independent accidents but
   one repeating shape.
 
@@ -97,6 +105,24 @@
   **Deliverable:** `.agent/reports/022-code-review.md`, findings ranked by
   blast radius, each with the invariant it breaks and whether a test can pin
   it. Run it with `/code-review`.
+
+  **Done 2026-08-13.** Two independent reviews (`022-code-review.md`,
+  `023-code-review-cross-file-invariants.md`) plus a consolidation/remediation
+  pass (`.agent/plans/024-code-review-remediation.md`, phases 0–6) fixed the
+  certain one-liners, the airline-identity fork, the render worker's timeout
+  premise, and display-stability findings. Two items were deliberately left
+  open rather than fixed — see the standing data checks below and the two
+  live-traffic watch items already on this list (airline grounding
+  IATA-vs-name, `| Ad` / `Sponsored` placement variants).
+
+  **Standing data checks** (run before trusting a Kayak-only all-time low;
+  both returned zero rows as of 024's verification):
+  - Rows whose departure date falls outside `[depart_date, depart_date+1]`
+    (022 N4 / 023 A8) — a Kayak extraction landing on an ungrounded calendar
+    date.
+  - Same-carrier, same-clock-time pairs one day apart with departure hour
+    `>= 3` (024's F6) — a night-rollover rebase (`_rebase_departure_date`,
+    CLAUDE.md) misfiring outside its intended early-morning window.
 
 ### Passengers (adults + children with ages)
 - [ ] **Track a party, not one adult.** Every tracker currently searches for a
@@ -268,6 +294,19 @@
     step (group by `flight_key`) is already separate from the "only if
     price matches" decision, so extending it later is a criteria change,
     not a rewrite.
+  - **Codeshare pairs are a second identity fork, same shape as the
+    name-variant one Phase 4 fixed** (023's architectural finding, recorded
+    2026-08-13). Two carriers selling seats on the *same physical flight*
+    under different marketing flight numbers (e.g. an Iberia flight also sold
+    as a British Airways codeshare) print different airline names *and*
+    different flight numbers, so today they get two distinct `flight_key`s
+    and never merge — unlike the `LATAM`/`LATAM Airlines` case, this one
+    isn't solvable by a name→code map, since the two carriers are genuinely
+    different sellers of the same seat. Belongs here rather than in Phase 4's
+    scope because it's the same "one itinerary, several sellers" shape this
+    expandable-detail view is designed for, and a codeshare pair would want
+    the same per-source breakdown treatment as a genuine multi-source price
+    disagreement.
 
 ## Future (v2)
 - [ ] **City name autocomplete** — replace raw text inputs with city name search + autocomplete (e.g. type "Barcelona" → suggests BCN). Needs an airport/city dataset.
