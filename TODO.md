@@ -202,6 +202,40 @@
     the model must be asked for the flag explicitly, and `_validate` must
     ground it like any other field.
 
+### Kayak: actively search next-day early-morning departures
+- [ ] **A second Kayak request per cycle, for `depart_date + 1`, filtered down to
+  early-morning-only rows.** Deferred 2026-08-13 alongside the night-rollover
+  fix (`KayakSource._rebase_departure_date`, `CLAUDE.md`) — that fix only
+  reclassifies a next-day departure that *already happened to appear* on
+  `depart_date`'s own results page (Kayak's own behavior, unexplained, not
+  something this project controls). It does nothing for a red-eye that Kayak
+  only lists under `depart_date + 1`'s page and never surfaces on
+  `depart_date`'s — those are invisible to the tracker today, rollover fix or
+  not.
+
+  Scope, roughly in dependency order:
+  - `KayakSource.search` (or `_search_inner`) issues a second render/extract
+    pass against `_build_url(..., depart_date + 1 day, ...)`, alongside the
+    existing `depart_date` request.
+  - Drop every row from that second pass whose departure hour is at or past
+    `_NIGHT_ROLLOVER_CUTOFF_HOUR` — the second request exists only to catch
+    the early-morning window, not to double-count that day's whole schedule.
+  - Surviving rows get the same `_rebase_departure_date` treatment (bucket
+    under `depart_date`) before merging into the one snapshot the first
+    request produced — same reasoning as "Why Kayak shares the main
+    snapshot" in CLAUDE.md: two Kayak snapshots on one cycle would be exactly
+    the kind of split-view staleness the per-source blending work exists to
+    avoid.
+  - **This doubles Kayak's request volume per cycle** — real traffic against
+    a bot-detecting site (see "Enabling Kayak on more trackers" in
+    CLAUDE.md), on top of doubling LLM extraction cost. Given Kayak is
+    currently enabled on a single tracker, weigh whether the early-morning
+    window is worth a second full render+extract before widening rollout,
+    rather than assuming it scales for free.
+  - Google/fli is unaffected in scope — its `travel_date` param already
+    constrains to the exact queried day, so there's no equivalent gap to
+    close there, only Kayak's.
+
 ### Additional sources + expandable flight detail
 - [ ] **Skyscanner as a third source, with an expandable per-row detail view.**
   Deferred 2026-08-12 alongside the same-price row collapse

@@ -714,6 +714,145 @@ async def test_validate_does_not_ground_times_against_a_page_printing_none():
     assert len(KayakSource._validate(rows, _sample_body())) == 1
 
 
+# --- departure-date rebasing (2026-08-13, tracker 20 GRU-ZRH) --------------
+#
+# _extract's prompt tells the model exactly which date to use for
+# departure_time, yet an after-midnight departure like "12:45 am" was
+# observed to land a whole day late on 6 separate real snapshots -- always
+# the identical 00:45 clock time, with arrival_time shifted by the same
+# delta (elapsed duration preserved, matching the page's own layover text).
+# depart_date is known with certainty (our own request), so _validate
+# rebases departure_time to it and carries arrival_time by the same delta.
+
+
+async def test_rebase_departure_date_shifts_a_late_departure_and_its_arrival_together():
+    from backend.sources.kayak import KayakSource
+
+    row = {"departure_time": "2026-08-22T00:45:00", "arrival_time": "2026-08-22T22:30:00"}
+    corrected = KayakSource._rebase_departure_date(row, "2026-08-21")
+
+    assert corrected["departure_time"] == "2026-08-21T00:45:00"
+    assert corrected["arrival_time"] == "2026-08-21T22:30:00"
+
+
+async def test_rebase_departure_date_shifts_an_overnight_arrival_by_the_same_delta():
+    """The +1-day arrival (itself past midnight relative to departure) must
+    shift by the identical delta, not collapse onto departure's day."""
+    from backend.sources.kayak import KayakSource
+
+    row = {"departure_time": "2026-08-22T00:45:00", "arrival_time": "2026-08-23T12:25:00"}
+    corrected = KayakSource._rebase_departure_date(row, "2026-08-21")
+
+    assert corrected["departure_time"] == "2026-08-21T00:45:00"
+    assert corrected["arrival_time"] == "2026-08-22T12:25:00"
+
+
+async def test_rebase_departure_date_leaves_a_correctly_dated_row_untouched():
+    from backend.sources.kayak import KayakSource
+
+    row = {"departure_time": "2026-08-21T20:45:00", "arrival_time": "2026-08-22T17:15:00"}
+    assert KayakSource._rebase_departure_date(row, "2026-08-21") == row
+
+
+async def test_rebase_departure_date_rolls_over_up_to_the_cutoff_hour():
+    """2:59am on depart_date+1 is still "night of depart_date" (user-confirmed
+    2026-08-13 boundary: up to _NIGHT_ROLLOVER_CUTOFF_HOUR, currently 3)."""
+    from backend.sources.kayak import KayakSource
+
+    row = {"departure_time": "2026-08-22T02:59:00", "arrival_time": "2026-08-22T20:00:00"}
+    corrected = KayakSource._rebase_departure_date(row, "2026-08-21")
+
+    assert corrected["departure_time"] == "2026-08-21T02:59:00"
+    assert corrected["arrival_time"] == "2026-08-21T20:00:00"
+
+
+async def test_rebase_departure_date_does_not_roll_over_at_or_past_the_cutoff_hour():
+    """A depart_date+1 departure at/after the cutoff is a different flight,
+    not a late one -- left untouched rather than silently relabeled."""
+    from backend.sources.kayak import KayakSource
+
+    row = {"departure_time": "2026-08-22T03:00:00", "arrival_time": "2026-08-22T20:00:00"}
+    assert KayakSource._rebase_departure_date(row, "2026-08-21") == row
+
+
+async def test_rebase_departure_date_does_not_roll_over_more_than_one_day():
+    """A departure two-plus days off depart_date is almost certainly an
+    unrelated flight, not a night rolling past midnight -- left untouched."""
+    from backend.sources.kayak import KayakSource
+
+    row = {"departure_time": "2026-08-23T01:00:00", "arrival_time": "2026-08-23T20:00:00"}
+    assert KayakSource._rebase_departure_date(row, "2026-08-21") == row
+
+
+async def test_rebase_departure_date_leaves_an_unparseable_departure_untouched():
+    """Matches _canonical_timestamp's rule: an unparseable value is stored
+    as-is rather than dropped, so rebasing must not invent a date for it."""
+    from backend.sources.kayak import KayakSource
+
+    row = {"departure_time": "tomorrow morning", "arrival_time": "2026-08-21T17:15:00"}
+    assert KayakSource._rebase_departure_date(row, "2026-08-21") == row
+
+
+async def test_validate_rebases_a_mis_dated_departure_when_depart_date_is_given():
+    """End-to-end through _validate: grounding still passes (clock-time
+    grounding only checks HH:MM, never the date), and the kept row carries
+    the corrected date."""
+    from backend.sources.kayak import KayakSource
+
+    body = (
+        "English\n€\nEuro\nFeedback\n"
+        "12:45 am – 10:30 pm\nTAP AIR PORTUGAL\n1 stop\n€684\nSelect\n"
+    )
+    rows = [{"airline": "TAP AIR PORTUGAL", "price": 684.0,
+             "departure_time": "2026-08-22T00:45:00", "arrival_time": "2026-08-22T22:30:00"}]
+
+    kept = KayakSource._validate(rows, body, "2026-08-21")
+
+    assert len(kept) == 1
+    assert kept[0]["departure_time"] == "2026-08-21T00:45:00"
+    assert kept[0]["arrival_time"] == "2026-08-21T22:30:00"
+
+
+async def test_validate_without_depart_date_does_not_rebase():
+    """depart_date defaults to None so every pre-existing _validate call
+    (this file has dozens) keeps its current behavior unchanged."""
+    from backend.sources.kayak import KayakSource
+
+    body = "English\n€\nEuro\nFeedback\n12:45 am – 10:30 pm\nTAP AIR PORTUGAL\n1 stop\n€684\nSelect\n"
+    rows = [{"airline": "TAP AIR PORTUGAL", "price": 684.0,
+             "departure_time": "2026-08-22T00:45:00", "arrival_time": "2026-08-22T22:30:00"}]
+
+    kept = KayakSource._validate(rows, body)
+
+    assert kept[0]["departure_time"] == "2026-08-22T00:45:00"
+
+
+async def test_search_rebases_departure_date_end_to_end(monkeypatch):
+    """search() must actually pass depart_date through to _validate, not
+    just leave it available as an unused parameter."""
+    from backend.sources.kayak import KayakSource
+
+    source = KayakSource()
+    body = (
+        "English\n€\nEuro\nFeedback\n"
+        "12:45 am – 10:30 pm\nTAP AIR PORTUGAL\n1 stop\n€684\nSelect\n"
+    )
+    with patch.object(source, "_render", new=AsyncMock(return_value=body)):
+        with patch.object(
+            source,
+            "_extract",
+            new=AsyncMock(return_value=[{
+                "airline": "TAP AIR PORTUGAL", "price": 684.0,
+                "departure_time": "2026-08-22T00:45:00", "arrival_time": "2026-08-22T22:30:00",
+            }]),
+        ):
+            results = await source.search("GRU", "ZRH", "2026-08-21", None, "EUR", 5)
+
+    assert len(results) == 1
+    assert results[0].departure_time == "2026-08-21T00:45:00"
+    assert results[0].arrival_time == "2026-08-21T22:30:00"
+
+
 async def test_search_drops_row_whose_clock_time_is_hallucinated():
     """End-to-end: the time check must actually be wired into search(), not
     just exist as a testable helper."""

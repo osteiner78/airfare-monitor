@@ -186,6 +186,7 @@ _AIRLINE_NAME_TO_CODE: dict[str, str] = {
     "AZUL": "AD",
     "AIR EUROPA": "UX",
     "ITA AIRWAYS": "AZ",
+    "ITA": "AZ",
     "IBERIA": "IB",
     "ARAJET": "DM",
     "GOL": "G3",
@@ -263,6 +264,29 @@ _SOURCE_LABELS: dict[str, str] = {
     "kayak": "Kayak",
 }
 _env.filters["source_label"] = lambda s: _SOURCE_LABELS.get(s, s)
+
+
+def _relative_minutes(age_minutes) -> str:
+    # Same bucketing as base.html's updateRelativeTimes() (mins -> hours ->
+    # days), so a staleness badge rendered server-side (the results table's
+    # per-row Source badge, the detail header's "Best now" badge) reads the
+    # same as the client-refreshed "Fetched" column next to it, instead of
+    # one saying "66m ago" and the other "1h ago" for the same timestamp.
+    if age_minutes is None:
+        return ""
+    mins = int(age_minutes)
+    if mins < 1:
+        return "just now"
+    if mins < 60:
+        return f"{mins}m ago"
+    hrs = mins // 60
+    if hrs < 24:
+        return f"{hrs}h ago"
+    days = hrs // 24
+    return f"{days}d ago"
+
+
+_env.filters["relative_minutes"] = _relative_minutes
 
 
 def _split_timestamps(flight_dict: dict) -> None:
@@ -730,14 +754,41 @@ async def _build_detail_context(tracker_id: int) -> dict:
     max_stops = max((f["stops"] for f in all_flights if f.get("stops") is not None), default=0)
     max_duration = max((f["duration_min"] for f in all_flights if f.get("duration_min") is not None), default=0)
 
+    # Two sources can print the same airline under different text: pure
+    # casing (Kayak's "TAP AIR PORTUGAL" vs Google/fli's "Tap Air Portugal")
+    # and shortened-vs-full names (Google's bare "ITA"/"LATAM" vs Kayak's
+    # "ITA Airways"/"LATAM Airlines") -- both otherwise show up as separate
+    # facet entries. _AIRLINE_NAME_TO_CODE already maps known name variants
+    # to one IATA code for the logo lookup, so reuse it as the grouping
+    # identity (looked up directly, not via _airline_code_from_name, since
+    # that also gates on LOGO_UNAVAILABLE_CODES -- a code with no logo image
+    # should still merge). Names with no known code (e.g. Kayak's own
+    # "Multiple airlines" placeholder) fall back to a casefolded identity.
+    # Rewrite all_flights' airline field to the chosen canonical name
+    # afterward so the checkbox value (built from `airlines`) and each
+    # flight's own identity (read by filters.js) agree.
+    def _airline_identity(name: str) -> str:
+        normalized = " ".join((name or "").split())
+        return _AIRLINE_NAME_TO_CODE.get(normalized.upper()) or normalized.casefold()
+
     airline_groups: dict[str, dict] = {}
     for f in all_flights:
-        name = f["airline"] or ""
-        if name not in airline_groups:
-            airline_groups[name] = {"name": name, "count": 0, "best_price": f["price"]}
-        airline_groups[name]["count"] += 1
-        if f["price"] < airline_groups[name]["best_price"]:
-            airline_groups[name]["best_price"] = f["price"]
+        raw_name = f["airline"] or ""
+        key = _airline_identity(raw_name)
+        group = airline_groups.get(key)
+        if group is None:
+            group = {"name": raw_name, "count": 0, "best_price": f["price"]}
+            airline_groups[key] = group
+        elif raw_name and group["name"].isupper() and not raw_name.isupper():
+            # Prefer the naturally-cased form over an ALL-CAPS one for display.
+            group["name"] = raw_name
+        group["count"] += 1
+        if f["price"] < group["best_price"]:
+            group["best_price"] = f["price"]
+
+    for f in all_flights:
+        f["airline"] = airline_groups[_airline_identity(f["airline"])]["name"]
+
     airlines = sorted(airline_groups.values(), key=lambda a: (a["best_price"], a["name"]))
 
     # "Best now" is the cheapest across the BLENDED set, so a Kayak fare that

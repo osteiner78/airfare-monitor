@@ -9,7 +9,7 @@ import sys
 import tempfile
 import time
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 from backend.kayak_samples import _DEFAULT_SAMPLES_DIR, _SAMPLES_DIR_ENV, capture_sample
 from backend.sources.base import FlightResult
@@ -56,6 +56,15 @@ _WORKER_TIMEOUT_FACTOR = 2.5
 # brand); the slice is still a small fraction of the ~20k-char body, so the
 # LLM-latency reason for trimming at all is unaffected.
 _OVERFETCH_ROWS = 2
+
+# Product decision (2026-08-13, user-confirmed), not a parsing accident: a
+# flight departing after midnight but before this hour on depart_date+1 is
+# still "the night of depart_date" for anyone booking that evening, so
+# _rebase_departure_date buckets it under depart_date. Anything at or past
+# this hour is left as extracted -- a genuinely different day's flight, not
+# a late one. 3 sits at the upper end of "up to around 2-3am" as the user
+# put it; narrow it to 2 if 2:00-2:59 departures should NOT roll over.
+_NIGHT_ROLLOVER_CUTOFF_HOUR = 3
 
 # Derived from the WORKER's cap, not from 2 * _RENDER_TIMEOUT_S. Plan 021
 # Phase 2 moved the render into a subprocess with a 2.5x budget while this
@@ -639,7 +648,7 @@ class KayakSource:
                 self.last_error_level = "WARNING"
                 return []
 
-            validated = self._validate(rows, body_text)
+            validated = self._validate(rows, body_text, depart_date)
             record["validated_rows"] = len(validated)
             dropped = len(rows) - len(validated)
 
@@ -859,9 +868,58 @@ class KayakSource:
         return normalized in body_text.casefold()
 
     @staticmethod
-    def _validate(rows: list[dict], body_text: str) -> list[dict]:
+    def _rebase_departure_date(row: dict, depart_date: str) -> dict:
+        """Bucket an after-midnight departure landing on depart_date+1 under depart_date.
+
+        Not a misread to correct -- a deliberate window (2026-08-13,
+        user-confirmed: "a flight at 00:45 on 22/08 counts as night of
+        21/08 even if not formally correct"). Observed live on tracker 20
+        GRU-ZRH: TAP AIR PORTUGAL / Azul rows printed on Kayak's own
+        2026-08-21-dated results page as a bare "12:45 am" departure, but
+        extracted with a 2026-08-22 date on 6 of several occasions across
+        4 snapshots (2026-08-11 through 2026-08-13) -- the same real,
+        printed itinerary (price, layover, duration all match the captured
+        body, 20260813T005700.382768.txt lines 150/168) landing on either
+        side of midnight depending on the run. _extract's prompt tells the
+        model to use depart_date for departure_time and +1 only for an
+        overnight arrival, so depart_date is the one field known with
+        certainty regardless of which way a given run reads it -- rebase
+        departure_time onto it and shift arrival_time by the identical
+        delta, preserving the elapsed gap the model computed.
+
+        Bounded to _NIGHT_ROLLOVER_CUTOFF_HOUR and exactly one day so this
+        stays "the same evening's late flight", not silent tolerance for an
+        arbitrarily wrong date: a departure two-plus days off, or one that
+        lands after the cutoff, is left untouched -- almost certainly a
+        different, unrelated flight rather than a night rolling over.
+        An unparseable departure_time is also left untouched, matching
+        _canonical_timestamp's "unparseable passes through" rule.
+        """
+        try:
+            expected = date.fromisoformat(depart_date)
+            dep_dt = datetime.fromisoformat(str(row.get("departure_time") or "").strip())
+        except ValueError:
+            return row
+
+        if (dep_dt.date() - expected).days != 1 or dep_dt.hour >= _NIGHT_ROLLOVER_CUTOFF_HOUR:
+            return row
+
+        delta = timedelta(days=1)
+        corrected = dict(row)
+        corrected["departure_time"] = (dep_dt - delta).isoformat()
+        try:
+            arr_dt = datetime.fromisoformat(str(row.get("arrival_time") or "").strip())
+            corrected["arrival_time"] = (arr_dt - delta).isoformat()
+        except ValueError:
+            pass
+        return corrected
+
+    @staticmethod
+    def _validate(rows: list[dict], body_text: str, depart_date: str | None = None) -> list[dict]:
         grounded = []
         for row in rows:
+            if depart_date is not None:
+                row = KayakSource._rebase_departure_date(row, depart_date)
             price = row.get("price")
             if price is None or price <= 0:
                 logger.warning("Dropping Kayak row with non-positive/missing price: %r", row)

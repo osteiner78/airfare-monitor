@@ -7,7 +7,7 @@
             </div>
             <div class="detail-prices">
                 {% if best_price is not none %}
-                <div class="detail-best" id="detail-best-price">Best now: {{ tracker.currency | currency_symbol }}{{ "%.0f"|format(best_price) }}{% if best_price_is_stale %}<span class="price-age" title="This source has not run since the latest cycle">· {{ best_price_source | source_label }} · {{ best_price_age_minutes }} min ago</span>{% endif %}</div>
+                <div class="detail-best" id="detail-best-price">Best now: {{ tracker.currency | currency_symbol }}{{ "%.0f"|format(best_price) }}{% if best_price_is_stale %}<span class="price-age" title="This source has not run since the latest cycle">· {{ best_price_source | source_label }} · {{ best_price_age_minutes | relative_minutes }}</span>{% endif %}</div>
                 {% endif %}
                 {% if historical_best_price is not none %}
                 <div class="detail-historical">Historical best: {{ tracker.currency | currency_symbol }}{{ "%.0f"|format(historical_best_price) }}</div>

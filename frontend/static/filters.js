@@ -15,15 +15,19 @@
         var durationEl = document.getElementById("filter-duration");
         if (!stopsEl || !durationEl) return;
         // Save user's explicit choices, not DOM state (greyed airlines are force-unchecked
-        // but the user's intent should survive filter changes).
-        var checkedAirlines = Object.keys(userAirlineState).filter(function (v) {
-            return userAirlineState[v] !== false;
+        // but the user's intent should survive filter changes). Persist the UNCHECKED set,
+        // not the checked one: an airline absent from a past save -- because it's new, or
+        // because a source printed it with different casing this cycle (e.g. Kayak's
+        // "TAP AIR PORTUGAL" vs Google's "Tap Air Portugal") -- must default to checked,
+        // not silently vanish from the filter.
+        var uncheckedAirlines = Object.keys(userAirlineState).filter(function (v) {
+            return userAirlineState[v] === false;
         });
         try {
             localStorage.setItem("filterState_" + trackerId, JSON.stringify({
                 stops: stopsEl.value,
                 duration: durationEl.value,
-                airlines: checkedAirlines,
+                airlinesUnchecked: uncheckedAirlines,
             }));
         } catch (e) {}
     }
@@ -202,10 +206,10 @@
             stopsEl.value = saved.stops;
             durationEl.value = saved.duration;
             if (durationLabel) durationLabel.textContent = formatDuration(parseInt(saved.duration, 10));
-            if (saved.airlines) {
-                var savedSet = new Set(saved.airlines);
+            if (saved.airlinesUnchecked) {
+                var uncheckedSet = new Set(saved.airlinesUnchecked);
                 document.querySelectorAll(".filter-airline").forEach(function (cb) {
-                    cb.checked = savedSet.has(cb.value);
+                    cb.checked = !uncheckedSet.has(cb.value);
                 });
             }
         }
