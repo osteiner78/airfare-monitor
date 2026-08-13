@@ -2,6 +2,7 @@
 
 **Plan:** `.agent/plans/024-code-review-remediation.md`, Phase 5
 **Date:** 2026-08-13
+**Commit:** `dbae1ea`
 
 ---
 
