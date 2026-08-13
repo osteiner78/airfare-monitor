@@ -205,7 +205,7 @@ end-to-end extraction — the render half is the half Phase 3 changes.
 
 ## Commit
 
-`248a5d1` — `[phase-3] Budget the Kayak render worker by its real waits, not a factor`
+`8cfb3e6` — `[phase-3] Budget the Kayak render worker by its real waits, not a factor`
 
 ---
 
