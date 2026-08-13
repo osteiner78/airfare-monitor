@@ -193,7 +193,7 @@ async def test_validate_drops_row_whose_airline_is_absent_from_rendered_text():
              "arrival_time": "2026-08-22T22:20:00"}]
     body = "Iberia\n3:50 am – 10:20 pm+1\n€654\nSelect\n"
 
-    kept = KayakSource._validate(rows, body)
+    kept, _ = KayakSource._validate(rows, body)
     assert [r["airline"] for r in kept] == ["Iberia"]
 
 
@@ -209,7 +209,7 @@ async def test_validate_keeps_the_multiple_airlines_label_the_page_prints():
              "arrival_time": "2026-08-22T22:20:00"}]
     body = "Multiple airlines\n3:50 am – 10:20 pm+1\n€654\nSelect\n"
 
-    assert len(KayakSource._validate(rows, body)) == 1
+    assert len(KayakSource._validate(rows, body)[0]) == 1
 
 
 async def test_validate_keeps_the_first_carrier_of_a_comma_joined_label():
@@ -220,7 +220,7 @@ async def test_validate_keeps_the_first_carrier_of_a_comma_joined_label():
              "arrival_time": "2026-08-22T22:20:00"}]
     body = "Arajet, Iberia\n3:50 am – 10:20 pm+1\n€654\nSelect\n"
 
-    assert len(KayakSource._validate(rows, body)) == 1
+    assert len(KayakSource._validate(rows, body)[0]) == 1
 
 
 async def test_validate_keeps_airline_differing_only_in_case_from_the_page():
@@ -233,4 +233,4 @@ async def test_validate_keeps_airline_differing_only_in_case_from_the_page():
              "arrival_time": "2026-08-22T22:20:00"}]
     body = "TAP Air Portugal\n3:50 am – 10:20 pm+1\n€654\nSelect\n"
 
-    assert len(KayakSource._validate(rows, body)) == 1
+    assert len(KayakSource._validate(rows, body)[0]) == 1

@@ -474,7 +474,7 @@ async def test_validate_drops_row_whose_price_is_absent_from_body_text():
         {"airline": "TAP", "flight_number": "TP 84", "price": 785.0},
         {"airline": "TAP", "flight_number": "TP 90", "price": 412.0},  # never rendered
     ]
-    kept = KayakSource._validate(rows, body)
+    kept, _ = KayakSource._validate(rows, body)
     assert [r["price"] for r in kept] == [785.0]
 
 
@@ -484,7 +484,7 @@ async def test_validate_keeps_row_whose_price_appears_thousands_separated():
     from backend.sources.kayak import KayakSource
 
     body = "Best\n€1,204\n18h 10m\nSWISS\nSelect\n"
-    kept = KayakSource._validate([{"airline": "SWISS", "flight_number": "LX 93", "price": 1204.0}], body)
+    kept, _ = KayakSource._validate([{"airline": "SWISS", "flight_number": "LX 93", "price": 1204.0}], body)
     assert len(kept) == 1
 
 
@@ -497,7 +497,7 @@ async def test_validate_keeps_row_whose_price_uses_dot_thousands_separator():
     from backend.sources.kayak import KayakSource
 
     body = "TAP AIR PORTUGAL\nR$ 4.312\n10h 25m\nSelecionar\n"
-    kept = KayakSource._validate([{"airline": "TAP", "flight_number": "TP 88", "price": 4312.0}], body)
+    kept, _ = KayakSource._validate([{"airline": "TAP", "flight_number": "TP 88", "price": 4312.0}], body)
     assert len(kept) == 1
 
 
@@ -510,7 +510,7 @@ async def test_validate_keeps_row_whose_price_uses_comma_decimals():
     # a reason unrelated to what this test checks (comma-decimal price
     # parsing). The assertion is unchanged.
     body = "SWISS\nR$ 4.312,00\n18h 10m\nSelecionar\n"
-    kept = KayakSource._validate([{"airline": "SWISS", "flight_number": "LX 93", "price": 4312.0}], body)
+    kept, _ = KayakSource._validate([{"airline": "SWISS", "flight_number": "LX 93", "price": 4312.0}], body)
     assert len(kept) == 1
 
 
@@ -522,7 +522,7 @@ async def test_validate_drops_non_positive_price():
         {"airline": "TAP", "flight_number": "TP 84", "price": 785.0},
         {"airline": "TAP", "flight_number": "TP 90", "price": 0.0},
     ]
-    kept = KayakSource._validate(rows, body)
+    kept, _ = KayakSource._validate(rows, body)
     assert [r["price"] for r in kept] == [785.0]
 
 
@@ -546,7 +546,7 @@ async def test_validate_drops_price_wildly_outside_the_band_of_other_rows():
         {"airline": "Swiss", "flight_number": "LX 3", "price": 800.0},
         {"airline": "Ryanair", "flight_number": "FR 4", "price": 99999.0},
     ]
-    kept = KayakSource._validate(rows, body)
+    kept, _ = KayakSource._validate(rows, body)
     assert [r["price"] for r in kept] == [700.0, 750.0, 800.0]
 
 
@@ -655,7 +655,7 @@ async def test_validate_drops_row_whose_clock_time_is_absent_from_rendered_text(
         {"airline": "Royal Air Maroc", "price": 554.0,
          "departure_time": "2026-10-04T12:30:00", "arrival_time": "2026-10-04T17:40:00"},
     ]
-    kept = KayakSource._validate(rows, _twelve_hour_body())
+    kept, _ = KayakSource._validate(rows, _twelve_hour_body())
 
     assert [r["departure_time"] for r in kept] == ["2026-10-04T00:30:00"]
 
@@ -668,7 +668,7 @@ async def test_validate_drops_row_whose_arrival_time_is_absent_from_rendered_tex
     rows = [{"airline": "Royal Air Maroc", "price": 554.0,
              "departure_time": "2026-10-04T00:30:00", "arrival_time": "2026-10-04T05:40:00"}]
 
-    assert KayakSource._validate(rows, _twelve_hour_body()) == []
+    assert KayakSource._validate(rows, _twelve_hour_body())[0] == []
 
 
 async def test_validate_keeps_row_whose_timestamp_cannot_be_parsed():
@@ -680,7 +680,7 @@ async def test_validate_keeps_row_whose_timestamp_cannot_be_parsed():
     rows = [{"airline": "Royal Air Maroc", "price": 554.0,
              "departure_time": "tomorrow morning", "arrival_time": ""}]
 
-    assert len(KayakSource._validate(rows, _twelve_hour_body())) == 1
+    assert len(KayakSource._validate(rows, _twelve_hour_body())[0]) == 1
 
 
 async def test_validate_grounds_clock_times_against_a_24_hour_page():
@@ -697,7 +697,7 @@ async def test_validate_grounds_clock_times_against_a_24_hour_page():
         {"airline": "Royal Air Maroc", "price": 4312.0,
          "departure_time": "2026-10-04T12:30:00", "arrival_time": "2026-10-04T17:40:00"},
     ]
-    kept = KayakSource._validate(rows, body)
+    kept, _ = KayakSource._validate(rows, body)
 
     assert [r["departure_time"] for r in kept] == ["2026-10-04T00:30:00"]
 
@@ -711,7 +711,7 @@ async def test_validate_does_not_ground_times_against_a_page_printing_none():
     rows = [{"airline": "TAP AIR PORTUGAL", "price": 785.0,
              "departure_time": "2026-08-21T00:45:00", "arrival_time": "2026-08-21T22:30:00"}]
 
-    assert len(KayakSource._validate(rows, _sample_body())) == 1
+    assert len(KayakSource._validate(rows, _sample_body())[0]) == 1
 
 
 # --- departure-date rebasing (2026-08-13, tracker 20 GRU-ZRH) --------------
@@ -806,7 +806,7 @@ async def test_validate_rebases_a_mis_dated_departure_when_depart_date_is_given(
     rows = [{"airline": "TAP AIR PORTUGAL", "price": 684.0,
              "departure_time": "2026-08-22T00:45:00", "arrival_time": "2026-08-22T22:30:00"}]
 
-    kept = KayakSource._validate(rows, body, "2026-08-21")
+    kept, _ = KayakSource._validate(rows, body, "2026-08-21")
 
     assert len(kept) == 1
     assert kept[0]["departure_time"] == "2026-08-21T00:45:00"
@@ -822,7 +822,7 @@ async def test_validate_without_depart_date_does_not_rebase():
     rows = [{"airline": "TAP AIR PORTUGAL", "price": 684.0,
              "departure_time": "2026-08-22T00:45:00", "arrival_time": "2026-08-22T22:30:00"}]
 
-    kept = KayakSource._validate(rows, body)
+    kept, _ = KayakSource._validate(rows, body)
 
     assert kept[0]["departure_time"] == "2026-08-22T00:45:00"
 
@@ -851,6 +851,86 @@ async def test_search_rebases_departure_date_end_to_end(monkeypatch):
     assert len(results) == 1
     assert results[0].departure_time == "2026-08-21T00:45:00"
     assert results[0].arrival_time == "2026-08-21T22:30:00"
+
+
+# --- rebase observability (024 Phase 2) -------------------------------
+#
+# _rebase_departure_date rewrites an extracted row's identity silently --
+# correct product behavior (2026-08-13 user decision), but a rewrite that
+# nobody can see is also a rewrite nobody can audit if the cutoff or the
+# extraction model's own behavior ever drifts. _validate now reports how
+# many rows it rebased, and _search_inner surfaces a non-zero count on
+# /monitor the same way it already surfaces a partial grounding drop.
+
+
+async def test_validate_returns_the_number_of_rows_it_rebased():
+    from backend.sources.kayak import KayakSource
+
+    body = (
+        "English\n€\nEuro\nFeedback\n"
+        "12:45 am – 10:30 pm\nTAP AIR PORTUGAL\n1 stop\n€684\nSelect\n"
+        "8:00 pm – 11:00 pm\nSWISS\n1 stop\n€900\nSelect\n"
+    )
+    rows = [
+        {"airline": "TAP AIR PORTUGAL", "price": 684.0,
+         "departure_time": "2026-08-22T00:45:00", "arrival_time": "2026-08-22T22:30:00"},
+        {"airline": "SWISS", "price": 900.0,
+         "departure_time": "2026-08-21T20:00:00", "arrival_time": "2026-08-21T23:00:00"},
+    ]
+
+    _, rebased_count = KayakSource._validate(rows, body, "2026-08-21")
+
+    assert rebased_count == 1
+
+
+async def test_validate_reports_zero_rebased_rows_without_depart_date():
+    """depart_date=None means _rebase_departure_date is never called at all
+    (see test_validate_without_depart_date_does_not_rebase) -- the counter
+    must agree with that, not just the surviving rows."""
+    from backend.sources.kayak import KayakSource
+
+    body = "English\n€\nEuro\nFeedback\n12:45 am – 10:30 pm\nTAP AIR PORTUGAL\n1 stop\n€684\nSelect\n"
+    rows = [{"airline": "TAP AIR PORTUGAL", "price": 684.0,
+             "departure_time": "2026-08-22T00:45:00", "arrival_time": "2026-08-22T22:30:00"}]
+
+    _, rebased_count = KayakSource._validate(rows, body)
+
+    assert rebased_count == 0
+
+
+async def test_search_warns_and_records_the_rebase_count_when_one_row_rolls_over():
+    """024 Phase 2: a night rollover is now surfaced, not just silently
+    corrected -- last_error names the count (the only channel /monitor
+    reads), and the sample sidecar's rebased_rows lets an offline analysis
+    join a rollover back to the source body that produced it."""
+    import json
+    from pathlib import Path
+
+    from backend.sources.kayak import KayakSource
+
+    source = KayakSource()
+    body = (
+        "English\n€\nEuro\nFeedback\n"
+        "12:45 am – 10:30 pm\nTAP AIR PORTUGAL\n1 stop\n€684\nSelect\n"
+    )
+    with patch.object(source, "_render", new=AsyncMock(return_value=body)):
+        with patch.object(
+            source,
+            "_extract",
+            new=AsyncMock(return_value=[{
+                "airline": "TAP AIR PORTUGAL", "price": 684.0,
+                "departure_time": "2026-08-22T00:45:00", "arrival_time": "2026-08-22T22:30:00",
+            }]),
+        ):
+            results = await source.search("GRU", "ZRH", "2026-08-21", None, "EUR", 5)
+
+    assert len(results) == 1
+    assert source.last_error_level == "WARNING"
+    assert "1" in source.last_error
+
+    assert source.last_sample_path is not None
+    sidecar = Path(source.last_sample_path).with_suffix(".json")
+    assert json.loads(sidecar.read_text())["rebased_rows"] == 1
 
 
 async def test_search_drops_row_whose_clock_time_is_hallucinated():

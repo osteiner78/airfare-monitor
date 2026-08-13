@@ -648,8 +648,9 @@ class KayakSource:
                 self.last_error_level = "WARNING"
                 return []
 
-            validated = self._validate(rows, body_text, depart_date)
+            validated, rebased_count = self._validate(rows, body_text, depart_date)
             record["validated_rows"] = len(validated)
+            record["rebased_rows"] = rebased_count
             dropped = len(rows) - len(validated)
 
             if not validated:
@@ -665,6 +666,16 @@ class KayakSource:
                 record["outcome"] = "partly_dropped"
                 self.last_error = (
                     f"Kayak validation dropped {dropped} of {len(rows)} extracted row(s)"
+                )
+                self.last_error_level = "WARNING"
+            elif rebased_count:
+                # No other message set (dropped == 0): surface the rebase on
+                # /monitor, the only channel that has caught this class of
+                # problem before (see _rebase_departure_date).
+                record["outcome"] = "extracted"
+                self.last_error = (
+                    f"Kayak validation rebased {rebased_count} row(s) onto depart_date "
+                    "(night rollover)"
                 )
                 self.last_error_level = "WARNING"
             else:
@@ -915,11 +926,17 @@ class KayakSource:
         return corrected
 
     @staticmethod
-    def _validate(rows: list[dict], body_text: str, depart_date: str | None = None) -> list[dict]:
+    def _validate(
+        rows: list[dict], body_text: str, depart_date: str | None = None
+    ) -> tuple[list[dict], int]:
         grounded = []
+        rebased_count = 0
         for row in rows:
             if depart_date is not None:
-                row = KayakSource._rebase_departure_date(row, depart_date)
+                rebased = KayakSource._rebase_departure_date(row, depart_date)
+                if rebased is not row:
+                    rebased_count += 1
+                row = rebased
             price = row.get("price")
             if price is None or price <= 0:
                 logger.warning("Dropping Kayak row with non-positive/missing price: %r", row)
@@ -942,7 +959,7 @@ class KayakSource:
             grounded.append(row)
 
         if not grounded:
-            return grounded
+            return grounded, rebased_count
 
         prices = sorted(r["price"] for r in grounded)
         n = len(prices)
@@ -954,7 +971,7 @@ class KayakSource:
                 logger.warning("Dropping Kayak row priced wildly outside the band of other rows: %r", row)
                 continue
             kept.append(row)
-        return kept
+        return kept, rebased_count
 
     @staticmethod
     def _dedupe_rows(rows: list[dict]) -> list[dict]:
