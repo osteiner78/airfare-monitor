@@ -22,6 +22,7 @@ in-process and never spawns anything, so these fail on the absent seam.
 """
 
 import asyncio
+import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -192,11 +193,26 @@ async def test_render_kills_the_worker_when_it_exceeds_the_timeout():
 
     proc = _FakeProc(hangs=True)
     spawn, _ = _spawn_returning(proc)
-    with patch("backend.sources.kayak._RENDER_TIMEOUT_S", 0.05), spawn:
+    # Patch the cap _render actually reads. Plan 024 Phase 3 replaced the
+    # runtime `_WORKER_TIMEOUT_FACTOR * _RENDER_TIMEOUT_S` product with a
+    # constant summed at import, so patching _RENDER_TIMEOUT_S stopped
+    # reaching it -- these two tests still passed, having waited the real
+    # 130s each.
+    started = time.monotonic()
+    with patch("backend.sources.kayak._WORKER_TIMEOUT_S", 0.05), spawn:
         with pytest.raises(Exception):
             await KayakSource()._render("https://www.kayak.com/x")
+    elapsed = time.monotonic() - started
 
     assert proc.killed, "a hung worker was left running"
+    # The patch above must be the cap _render reads, not a constant it was
+    # derived from. Without this the test still PASSES when the derivation
+    # moves -- it just waits the real budget, which is how a 37s suite became
+    # a 297s one unnoticed.
+    assert elapsed < 5.0, (
+        f"the patched timeout did not take effect ({elapsed:.1f}s elapsed); "
+        "_render is reading a different cap than the one patched here"
+    )
 
 
 async def test_render_does_not_leave_the_worker_running_after_a_timeout():
@@ -206,7 +222,7 @@ async def test_render_does_not_leave_the_worker_running_after_a_timeout():
 
     proc = _FakeProc(hangs=True)
     spawn, _ = _spawn_returning(proc)
-    with patch("backend.sources.kayak._RENDER_TIMEOUT_S", 0.05), spawn:
+    with patch("backend.sources.kayak._WORKER_TIMEOUT_S", 0.05), spawn:
         with pytest.raises(Exception):
             await KayakSource()._render("https://www.kayak.com/x")
 
