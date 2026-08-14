@@ -29,6 +29,7 @@ from backend.db import (
     list_trackers,
     update_tracker,
 )
+from backend.fingerprint import normalize_airline
 
 CHART_COLORS = [
     "#4a90d9", "#e67e22", "#2ecc71", "#e74c3c", "#9b59b6",
@@ -702,22 +703,21 @@ async def _build_detail_context(tracker_id: int) -> dict:
     max_stops = max((f["stops"] for f in all_flights if f.get("stops") is not None), default=0)
     max_duration = max((f["duration_min"] for f in all_flights if f.get("duration_min") is not None), default=0)
 
-    # Two sources can print the same airline under different text: pure
-    # casing (Kayak's "TAP AIR PORTUGAL" vs Google/fli's "Tap Air Portugal")
-    # and shortened-vs-full names (Google's bare "ITA"/"LATAM" vs Kayak's
-    # "ITA Airways"/"LATAM Airlines") -- both otherwise show up as separate
-    # facet entries. _AIRLINE_NAME_TO_CODE already maps known name variants
-    # to one IATA code for the logo lookup, so reuse it as the grouping
-    # identity (looked up directly, not via _airline_code_from_name, since
-    # that also gates on LOGO_UNAVAILABLE_CODES -- a code with no logo image
-    # should still merge). Names with no known code (e.g. Kayak's own
-    # "Multiple airlines" placeholder) fall back to a casefolded identity.
-    # Rewrite all_flights' airline field to the chosen canonical name
-    # afterward so the checkbox value (built from `airlines`) and each
-    # flight's own identity (read by filters.js) agree.
-    def _airline_identity(name: str) -> str:
-        normalized = " ".join((name or "").split())
-        return _AIRLINE_NAME_TO_CODE.get(normalized.upper()) or normalized.casefold()
+    # The facet identity is THE identity -- the same function that builds the
+    # stored flight_key, not a copy of its logic. A copy is what this was
+    # until plan 025, and a copy is how the display layer came to merge
+    # "LATAM"/"LATAM Airlines" into one checkbox while the stored keys still
+    # forked them into two chart lines underneath it. Deferring here means
+    # the sidebar cannot claim a merge the data does not have.
+    #
+    # Note it is looked up through normalize_airline rather than
+    # _airline_code_from_name: the latter also gates on LOGO_UNAVAILABLE_CODES,
+    # and a carrier with no logo image must still merge.
+    #
+    # all_flights' airline field is rewritten to the group key afterward so
+    # the checkbox value and each flight's own identity (read by filters.js)
+    # agree.
+    _airline_identity = normalize_airline
 
     airline_groups: dict[str, dict] = {}
     for f in all_flights:

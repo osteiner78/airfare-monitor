@@ -284,7 +284,10 @@ async def test_all_flights_entry_airline_is_the_stable_identity_key(client):
     # _airline_identity key, not the display name, so filters.js keeps
     # matching a saved selection even when the display name flips between
     # cycles. "Vueling" is mapped in AIRLINE_NAME_TO_CODE to "VY", so its
-    # identity key is that code, not the casefolded name.
+    # identity key is that code, casefolded -- plan 025 made this the SAME
+    # function that builds the stored flight_key, and stored keys are
+    # casefolded, so the facet key is "vy" rather than "VY". Which case it is
+    # does not matter; that both layers agree does.
     from backend.db import create_snapshot, insert_flight_prices
     await _make_tracker(client)
     snap = await create_snapshot(1, results_count=1)
@@ -295,7 +298,7 @@ async def test_all_flights_entry_airline_is_the_stable_identity_key(client):
     response = await client.get("/trackers/1")
     all_flights = _extract_js_global(response.text, "allFlights")
     assert all_flights is not None, "window.allFlights not emitted"
-    assert all_flights[0].get("airline") == "VY"
+    assert all_flights[0].get("airline") == "vy"
 
 
 @pytest.mark.asyncio
@@ -361,9 +364,10 @@ async def test_sidebar_renders_one_airline_checkbox_per_distinct_airline(client)
 @pytest.mark.asyncio
 async def test_airline_checkbox_value_is_the_stable_identity_key(client):
     # Plan 024 phase 5 (F3/A6): the checkbox value is the stable identity key
-    # ("VY", Vueling's mapped IATA code), not the display name ("Vueling") --
-    # see the module-level note above. The visible label still shows the
-    # pretty name.
+    # (Vueling's mapped IATA code), not the display name ("Vueling") -- see the
+    # module-level note above. The visible label still shows the pretty name.
+    # Casefolded since plan 025 -- the facet now uses fingerprint's
+    # normalize_airline itself rather than a copy of its logic.
     from backend.db import create_snapshot, insert_flight_prices
     await _make_tracker(client)
     snap = await create_snapshot(1, results_count=1)
@@ -373,7 +377,7 @@ async def test_airline_checkbox_value_is_the_stable_identity_key(client):
 
     response = await client.get("/trackers/1")
     sidebar = _sidebar(response.text)
-    assert 'class="filter-airline" value="VY"' in sidebar
+    assert 'class="filter-airline" value="vy"' in sidebar
     assert "Vueling" in sidebar
 
 
@@ -438,8 +442,8 @@ async def test_airlines_sorted_by_best_price_ascending(client):
     response = await client.get("/trackers/1")
     sidebar = _sidebar(response.text)
     # Plan 024 phase 5: checkbox value is the identity key (IATA code for a
-    # mapped carrier), not the display name -- see the note above.
-    assert sidebar.index('value="VY"') < sidebar.index('value="IB"')
+    # mapped carrier, casefolded since plan 025), not the display name.
+    assert sidebar.index('value="vy"') < sidebar.index('value="ib"')
 
 
 @pytest.mark.asyncio

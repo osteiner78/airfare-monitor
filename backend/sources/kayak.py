@@ -11,6 +11,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta
 
+from backend.fingerprint import canonical_timestamp
 from backend.kayak_samples import _DEFAULT_SAMPLES_DIR, _SAMPLES_DIR_ENV, capture_sample
 from backend.sources.base import FlightResult
 
@@ -1029,30 +1030,20 @@ class KayakSource:
             kept.append(row)
         return kept
 
-    @staticmethod
-    def _canonical_timestamp(value) -> str:
-        # The model alternates between "2026-10-04T00:30" and
-        # "...T00:30:00" for the same flight across runs (observed live
-        # 2026-08-05). Both times are two thirds of the identity key, so the
-        # difference forks one flight into two. datetime.isoformat() is also
-        # exactly what GoogleFlightsSource emits, so this is what makes the
-        # two sources' keys line up. Unparseable values pass through: the row
-        # is still worth storing and _validate is the guard that matters.
-        text = str(value or "").strip()
-        if not text:
-            return ""
-        try:
-            return datetime.fromisoformat(text).isoformat()
-        except ValueError:
-            return text
+    # _canonical_timestamp used to live here. It is now
+    # fingerprint.canonical_timestamp, because a normalisation the identity
+    # layer depends on but cannot see is exactly the shape plan 025 exists to
+    # remove: it stops applying the moment another source appears.
+    _canonical_timestamp = staticmethod(canonical_timestamp)
 
     @staticmethod
     def _first_carrier(value) -> str:
         # Kayak names a connecting itinerary by every operator
         # ("Azul, easyJet") while the Google sources use only the first
-        # (fast_flights.py, `r.airlines[0]`). airline is a third of the
-        # identity key, so keeping the list would stop such flights ever
-        # merging across sources -- the duplication plan 019 exists to remove.
+        # (fast_flights.py, `r.airlines[0]`). This stays source-local because
+        # it shapes the DISPLAYED airline, which is the source's business;
+        # normalize_airline splits the same list for identity purposes, so a
+        # source that skips this step still gets the right key.
         text = " ".join(str(value or "").split())
         return text.split(",")[0].strip()
 

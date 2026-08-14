@@ -121,3 +121,46 @@ async def test_pages_and_fingerprint_share_one_map_object():
     import backend.pages as pages
 
     assert pages._AIRLINE_NAME_TO_CODE is AIRLINE_NAME_TO_CODE
+
+
+# --- plan 025: the identity layer owns every normalisation ---
+
+def test_a_carrier_list_keys_the_same_as_its_first_carrier():
+    """Kayak strips the list in _map_result, but identity must not DEPEND on a
+    source remembering to. A source that emits the raw list still merges."""
+    assert make_flight_key(make_result(airline="Azul, easyJet")) == make_flight_key(
+        make_result(airline="Azul")
+    )
+
+
+def test_a_timestamp_without_seconds_keys_the_same_as_the_canonical_form():
+    """Same rule for the other two thirds of the key: make_flight_key
+    canonicalises its own inputs rather than trusting the caller."""
+    assert make_flight_key(
+        make_result(departure_time="2026-08-21T19:20", arrival_time="2026-08-22T22:25")
+    ) == make_flight_key(
+        make_result(
+            departure_time="2026-08-21T19:20:00", arrival_time="2026-08-22T22:25:00"
+        )
+    )
+
+
+def test_an_unparseable_timestamp_still_passes_through():
+    """The deliberate abstention: a row with a time nothing can parse is still
+    worth storing, and _validate -- not the identity layer -- is the guard."""
+    key = make_flight_key(make_result(departure_time="not a date"))
+    assert "not a date" in key
+
+
+def test_the_facet_identity_is_the_stored_identity():
+    """The invariant plan 025 exists for: the display layer cannot claim a
+    merge the stored keys do not have. Before this, pages.py held a COPY of
+    normalize_airline's logic -- and the copy had already drifted (it left a
+    mapped code uppercased where the key casefolded it)."""
+    from backend.fingerprint import normalize_airline
+
+    for name in ("LATAM", "LATAM Airlines", "ITA", "ITA Airways", "Vueling",
+                 "Multiple airlines", "Azul, easyJet"):
+        assert make_flight_key(make_result(airline=name)).split("|")[0] == (
+            normalize_airline(name)
+        )
