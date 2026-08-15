@@ -745,16 +745,11 @@ async def _build_detail_context(tracker_id: int) -> dict:
 
     # "Best now" is the cheapest across the BLENDED set, so a Kayak fare that
     # is genuinely the cheapest still wins even when Kayak did not run in the
-    # newest cycle. When the winner is not from the freshest observation the
-    # template shows its age, because the honest claim is "cheapest we know
-    # of, seen N minutes ago", not "cheapest right now".
+    # newest cycle.
     live_rows = [f["flight"] for f in flights_with_delta
                  if f.get("delta", {}).get("type") != "missing"]
     best_row = min(live_rows, key=lambda r: r["price"], default=None)
     best_price = best_row["price"] if best_row else None
-    best_price_source = best_row.get("source") if best_row else None
-    best_price_age_minutes = int(best_row.get("age_minutes") or 0) if best_row else 0
-    best_price_is_stale = bool(best_row and best_row.get("is_stale"))
     historical_best_price = await get_historical_best_price(tracker_id)
 
     # Per-row sparkline for the results table -- one flight's own price history,
@@ -790,9 +785,6 @@ async def _build_detail_context(tracker_id: int) -> dict:
         "max_stops": max_stops,
         "max_duration": max_duration,
         "best_price": best_price,
-        "best_price_source": best_price_source,
-        "best_price_age_minutes": best_price_age_minutes,
-        "best_price_is_stale": best_price_is_stale,
         "source_freshness": source_freshness,
         "historical_best_price": historical_best_price,
         "airlines": airlines,

@@ -27,7 +27,7 @@
     </td>
     <td class="price-cell col-group-price">{{ item.flight.currency | currency_symbol }}{{ "%.0f"|format(item.flight.price) }}</td>
     <td class="col-group-price">{% include "partials/price_badge.html" %}</td>
-    <td class="muted-cell source-cell col-group-meta col-group-start">{{ (item.sources or [item.flight.source]) | map("source_label") | join(", ") }}{% if item.flight.get("is_stale") %}<span class="price-age" title="Last seen {{ item.flight.get('age_minutes')|int }} min before the latest cycle">{{ item.flight.get("age_minutes") | relative_minutes }}</span>{% endif %}</td>
+    <td class="muted-cell source-cell col-group-meta col-group-start">{{ (item.sources or [item.flight.source]) | map("source_label") | join(", ") }}</td>
     <td class="muted-cell col-group-meta">{% if item.flight.get("observed_at") %}<span class="last-checked" data-iso="{{ item.flight.observed_at }}">—</span>{% else %}—{% endif %}</td>
 </tr>
 {% endmacro %}

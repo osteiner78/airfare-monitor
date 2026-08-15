@@ -1352,12 +1352,3 @@ h1 {
     color: #999;
     margin-top: 0.1rem;
 }
-
-/* Blended sources: a row whose source did not run in the latest cycle. Muted
-   rather than alarming -- the price is real, just older than the rest. */
-.price-age {
-    margin-left: 0.4em;
-    font-size: 0.78em;
-    color: var(--muted, #7a8494);
-    white-space: nowrap;
-}
