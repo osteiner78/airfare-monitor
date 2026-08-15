@@ -308,10 +308,79 @@
     the same per-source breakdown treatment as a genuine multi-source price
     disagreement.
 
+### Database size: normalise first, then compress the series
+- [ ] **Shrink the DB, cheapest and safest technique first.** Measured
+  2026-08-15 against the live database — every number below is real, not an
+  estimate.
+
+  **Where the space actually is.** The file is 219 MB; `flight_prices` is
+  182 MB of it (87%), indexes 23 MB, everything else under 1 MB. Growth is
+  ~15,000 rows/day (6 trackers x ~100 rows x 24 cycles) ≈ 12 MB/day at the
+  current per-row cost. Broken down by column:
+
+  | column | size | distinct values |
+  |---|---|---|
+  | `legs_json` | **97 MB** (53% of the table) | **2,993** |
+  | `booking_url` | **24 MB** | **30** |
+  | `flight_key` | 11 MB | — |
+  | departure+arrival times | 10 MB | — |
+  | `airline` | 2 MB | — |
+
+  **Technique 1 — normalise the two duplicated text columns. Do this first.**
+  121 MB of the 182 MB table (66%) is the same handful of strings written over
+  and over. `legs_json` holds 275,980 rows of just 2,993 distinct values, and
+  crucially `COUNT(DISTINCT flight_key||legs_json)` is *also* 2,993 — the legs
+  are a pure function of the flight, never varying per snapshot, so a side
+  table keyed on `flight_key` is **exactly correct and completely lossless**.
+  `booking_url` is worse: 276,493 rows holding **30** distinct strings (each
+  source builds one search URL per tracker and repeats it on every row).
+
+  This is the whole point of doing it first: it is lossless, it needs no
+  decision about what history is worth keeping, it touches no read path that
+  computes prices, and it is bigger than the technique below. **Note
+  `legs_json` is currently written by every source and read by nothing** —
+  but do NOT simply drop it: it is precisely the per-leg data the expandable
+  row view above needs, so normalise it into a side table rather than
+  deleting the only copy of it.
+
+  **Technique 2 — run-length the price series (the original idea).** 141,910
+  of 276,493 rows (**51.3%**) are interior points of a run where the same
+  flight held the same price in the previous *and* next observation, so
+  keeping only the first and last of each run preserves every price movement
+  and every chart inflection.
+
+  **The trap that makes this harder than it looks, and why it is second:**
+  this app reads *the absence of a row from a snapshot* as a fact — it means
+  "this flight is no longer offered", and that is what drives the `missing`
+  delta and the blended per-source reconstruction. Delete an unchanged row and
+  absence becomes ambiguous: was the flight gone, or merely unchanged? That
+  ambiguity would land directly on the machinery plans 019/020 spent two weeks
+  getting right. Any implementation therefore needs the run made *explicit* —
+  an `observed_until` timestamp or an explicit run table — not rows silently
+  removed. `historical_best_price` is safe either way (it is `MIN` over all
+  rows, and first+last of a flat run preserves the minimum), but verify that
+  claim against the real table before trusting it.
+
+  **Technique 3 — retention.** Absorbs the old "Snapshot pruning" item: drop
+  or downsample snapshots beyond some age. Least attractive of the three
+  because it is the only one that destroys information the others preserve,
+  so it should be the last resort, not the first move.
+
+  **Housekeeping, independent of all of the above:** SQLite does not return
+  freed pages to the filesystem without `VACUUM`, so none of this shrinks the
+  file until it runs. Separately there are currently **6 database backups in
+  `data/` (~1.1 GB)**, four of them superseded — more than the live database
+  costs. Deleting those is the single cheapest disk win available and needs
+  only a decision, not code.
+
+  **Sequencing:** technique 1 is safe enough to do at any time and should
+  happen before the table grows further. Technique 2 wants the identity and
+  blending work to stay settled, so it should not land next to Passengers.
+
 ## Future (v2)
 - [ ] **City name autocomplete** — replace raw text inputs with city name search + autocomplete (e.g. type "Barcelona" → suggests BCN). Needs an airport/city dataset.
 - [ ] **Multicurrency** — Allow showing prices in any currency
 - [ ] **Notification delivery** — transport layer (email, push, webhook). DB table + API + evaluation logic already exists.
-- [ ] **Snapshot pruning** — data retention policy for old snapshots. Currently accumulates unbounded.
+- [ ] **Snapshot pruning** — moved into "Database size: normalise first, then compress the series" above (technique 3), where it sits alongside the two lossless techniques that should be tried before it.
 - [ ] **Docker deployment** — single Dockerfile with uvicorn.
 - [ ] **Authentication** — API key or basic auth if deployed publicly.
