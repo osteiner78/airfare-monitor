@@ -273,11 +273,60 @@
   Skyscanner exists, means guessing at data it may not even have (leg-level
   detail? a deep link? something Kayak's collapsed view doesn't print?).
 
-  Scope, once Skyscanner is actually being wired in:
-  - Add `backend/sources/skyscanner.py` implementing `SearchSource` (see
-    "Flight source architecture" in CLAUDE.md) — or, if it needs its own
-    render/extraction pipeline like Kayak, keep it opt-in and unregistered
-    from `get_sources()` the same way `KayakSource` is.
+  **Approach: decided 2026-08-15 — use the Kayak strategy.** `backend/sources/skyscanner.py`
+  implementing `SearchSource`, rendered by a headful patchright Chromium in its
+  own process and extracted by the LLM, opt-in per tracker and **not**
+  registered in `get_sources()`, exactly as `KayakSource` is. Skyscanner is a
+  bot-defended JS site with no usable free API, so the fli-style path is not
+  available; plans 017-021 already paid the discovery cost for this shape and
+  it works in production.
+
+  **What is genuinely reusable, and what only looks reusable.** The generic
+  machinery is already factored out and should be shared, not copied:
+  `kayak_render.py` (takes a URL plus a config and returns body text —
+  effectively source-agnostic already), `kayak_samples.py`, the `posix_spawn`
+  worker seam, and the evasion bundle. Rename rather than duplicate.
+
+  The *page heuristics* are the opposite: `_BLOCKED_MARKERS`,
+  `_RESULT_MARKERS`, `_CURRENCY_MARKERS`, `_strip_placements`,
+  `_strip_self_transfer_rows`, `_strip_nearby_airport_promos`,
+  `_results_section` and the extraction prompt are all literal strings from
+  Kayak's rendered page. **Copying them across gives false confidence** — they
+  will silently match nothing, and a guard that matches nothing reports
+  success. Each must be re-derived from real captured Skyscanner bodies, and
+  the sample capture must be wired in from the first render, not added after
+  a failure (the plan 018 lesson: five samples became permanently
+  unclassifiable because nothing persisted the bodies).
+
+  **Three infrastructure limits that only bite with a SECOND browser source:**
+  - **The browser profile is single-writer.** Skyscanner needs its own
+    `data/skyscanner-profile`, and its currency must be forced by driving that
+    site's own picker UI — the `?currency=` URL parameter was confirmed *not*
+    honoured on Kayak, and preferences are stored **per origin**. Assume
+    nothing transfers; force it, then verify it by reading the rendered page
+    back, which is a separate step from forcing.
+  - **`_get_kayak_render_lock()` is one process-wide lock**, and the container
+    limits (`1.5G` / `2.0` cpus, `shm_size: 1gb`) were measured for exactly one
+    Chromium. Keep a single global "one browser at a time" lock across both
+    sources rather than a lock per profile, or re-measure the limits first —
+    two concurrent headful Chromiums on this LXC is an untested load.
+  - **One LLM call per render, on a free tier.** A second source doubles the
+    call volume against the same quota, so the cadences interact.
+
+  **The per-tracker opt-in pattern does not survive a third source.**
+  `trackers.kayak_enabled` + `kayak_next_due_at` is a column pair per source;
+  Skyscanner would make it four columns, and Passengers is already adding
+  columns to the same table. Move to a `tracker_sources` table (tracker_id,
+  source, enabled, next_due_at) before adding the second pair, not after.
+
+  **It will fork identity again unless the variant map is extended.**
+  Skyscanner spells carriers its own way, and `normalize_airline`
+  (`fingerprint.py`) only bridges names present in `AIRLINE_NAME_TO_CODE`.
+  Expect a repeat of the `LATAM`/`LATAM Airlines` fork on first contact — the
+  detection is the same query used in plan 024 Phase 4 (same snapshot, same
+  clock times, different `flight_key`). Note that **adding map entries changes
+  stored keys**, so it needs the backfill script re-run, and that is a data
+  migration to schedule rather than a line to sneak in.
   - Replace the price-match merge with an always-merge-by-`flight_key`
     row: one row per physical flight, showing a price range (or the
     cheapest, clearly marked) when sources disagree, instead of either
