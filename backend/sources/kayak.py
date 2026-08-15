@@ -20,12 +20,21 @@ logger = logging.getLogger(__name__)
 _API_KEY_ENV = "DEEPSEEK_API_KEY"
 # The key behind DEEPSEEK_API_KEY is an opencode.ai key (not a native DeepSeek
 # API key), so base_url/model point at opencode's OpenAI-compatible endpoint
-# rather than api.deepseek.com directly. Points at opencode Zen (not the Go
-# proxy) using the free-tier model id -- the Go proxy's "deepseek-v4-flash"
+# rather than api.deepseek.com directly. Was opencode Zen's free tier
+# (https://opencode.ai/zen/v1); switched to the paid Go subscription
+# (2026-08-15) after Zen's free quota started 429ing on ~22-23 of every 24
+# hourly cycles across the 4 kayak_enabled trackers (system_logs
+# "kayak_search_error", FreeUsageLimitError, since 2026-08-12) -- 1 tracker's
+# worth of traffic fit the free cap, 4 didn't. Go's base URL is
+# opencode.ai/zen/go/v1. The docs' "opencode-go/<id>" model-id prefix is for
+# opencode's own CLI config, not this endpoint -- a real call and this
+# endpoint's own /v1/models both 401'd on the prefixed form and confirmed the
+# plain id (verified 2026-08-15: `scripts/kayak_model_benchmark.py verify`).
+# The Go proxy's plain "deepseek-v4-flash" is a separate, older finding: it
 # hit a regional access gate and then a monthly usage cap during Phase 6 live
-# verification; Zen's "deepseek-v4-flash-free" worked with the same key and
-# has no such cap (confirmed 2026-08-04 with a real request).
-_LLM_BASE_URL = "https://opencode.ai/zen/v1"
+# verification -- unrelated to this quota, but a reason not to fall back to
+# deepseek if mimo ever needs replacing.
+_LLM_BASE_URL = "https://opencode.ai/zen/go/v1"
 # Chosen by the plan 019 Phase 3b benchmark (200 replays of 5 captured bodies
 # across 4 candidates, .agent/reports/019-phase-3b.md), not by preference.
 # deepseek-v4-flash-free's problem was never accuracy, it was that Zen honours
@@ -33,8 +42,10 @@ _LLM_BASE_URL = "https://opencode.ai/zen/v1"
 # budget. mimo-v2.5-free emitted 509 or 523 completion tokens on all 50 runs --
 # two values, no reasoning burst ever -- so the flag cannot be ignored, because
 # there is no reasoning mode to ignore it with. Same correctness (49/50), and
-# 48/50 runs under 23s against deepseek's 6 runs over 30s.
-_LLM_MODEL = "mimo-v2.5-free"
+# 48/50 runs under 23s against deepseek's 6 runs over 30s. "mimo-v2.5" is the
+# same model under the paid Go catalog (no "-free" suffix) -- carries the same
+# benchmark result forward rather than reopening it.
+_LLM_MODEL = "mimo-v2.5"
 
 _RENDER_TIMEOUT_S = 45.0
 # Raised from 30.0 by Phase 3b task 3b.4 ("prefer the tightest tail and raise

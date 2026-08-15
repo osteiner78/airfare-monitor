@@ -158,7 +158,7 @@ def _score(content: str | None, body_text: str, top_n: int) -> dict:
         return {"parsed": False, "parse_error": f"{type(e).__name__}: {e}"[:200]}
 
     rows = flights[:top_n]
-    validated = KayakSource._validate(rows, body_text)
+    validated, _rebased_count = KayakSource._validate(rows, body_text)
     mapped = [KayakSource._map_result(r, "EUR", "") for r in validated]
 
     def _canonical(value) -> bool:
