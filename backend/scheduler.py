@@ -1,5 +1,6 @@
 import asyncio
 import random
+from dataclasses import asdict
 from datetime import datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -60,7 +61,27 @@ def _get_kayak_render_lock() -> asyncio.Lock:
     return _kayak_render_lock
 
 
-async def search_and_store(tracker_id: int, delay: bool = True) -> None:
+async def _log_source_error(event: str, source, tracker_id: int) -> None:
+    """Log a source's own last_error, if it set one, at its own severity.
+
+    Shared shape between the main get_sources() loop and the Kayak call --
+    both getattr(source, "last_error", ...) -> insert_log blocks were
+    identical apart from the event name.
+    """
+    from backend.db import insert_log
+
+    last_error = getattr(source, "last_error", None)
+    if last_error:
+        level = getattr(source, "last_error_level", "ERROR")
+        await insert_log(
+            level,
+            event,
+            tracker_id=tracker_id,
+            message=f"{type(source).__name__}: {last_error}",
+        )
+
+
+async def search_and_store(tracker_id: int, delay: bool) -> None:
     from backend.db import create_snapshot, get_tracker, insert_flight_prices, insert_log, update_tracker
     from backend.fingerprint import make_flight_key
     from backend.sources import get_sources
@@ -92,15 +113,7 @@ async def search_and_store(tracker_id: int, delay: bool = True) -> None:
                 tracker["top_n"],
             )
             results.extend(found)
-            last_error = getattr(source, "last_error", None)
-            if last_error:
-                level = getattr(source, "last_error_level", "ERROR")
-                await insert_log(
-                    level,
-                    "search_error",
-                    tracker_id=tracker_id,
-                    message=f"{type(source).__name__}: {last_error}",
-                )
+            await _log_source_error("search_error", source, tracker_id)
         except Exception as e:
             await insert_log("ERROR", "search_error", tracker_id=tracker_id, message=str(e))
 
@@ -127,15 +140,7 @@ async def search_and_store(tracker_id: int, delay: bool = True) -> None:
                     tracker["top_n"],
                 )
             results.extend(kayak_results)
-            last_error = getattr(kayak_source, "last_error", None)
-            if last_error:
-                level = getattr(kayak_source, "last_error_level", "ERROR")
-                await insert_log(
-                    level,
-                    "kayak_search_error",
-                    tracker_id=tracker_id,
-                    message=f"KayakSource: {last_error}",
-                )
+            await _log_source_error("kayak_search_error", kayak_source, tracker_id)
         except Exception as e:
             await insert_log("ERROR", "kayak_search_error", tracker_id=tracker_id, message=str(e))
         finally:
@@ -149,23 +154,7 @@ async def search_and_store(tracker_id: int, delay: bool = True) -> None:
     snapshot = await create_snapshot(tracker_id, results_count=len(results))
 
     if results:
-        prices = [
-            {
-                "flight_key": make_flight_key(r),
-                "source": r.source,
-                "price": r.price,
-                "currency": r.currency,
-                "duration_min": r.duration_min,
-                "stops": r.stops,
-                "airline": r.airline,
-                "flight_number": r.flight_number,
-                "departure_time": r.departure_time,
-                "arrival_time": r.arrival_time,
-                "legs_json": r.legs_json,
-                "booking_url": r.booking_url,
-            }
-            for r in results
-        ]
+        prices = [{**asdict(r), "flight_key": make_flight_key(r)} for r in results]
         await insert_flight_prices(snapshot["id"], tracker_id, prices)
 
         await _evaluate_notifications(tracker_id, min(r.price for r in results))
@@ -198,7 +187,7 @@ def add_tracker_job(tracker_id: int, interval_minutes: int, run_immediately: boo
         search_and_store,
         "interval",
         minutes=interval_minutes,
-        args=[tracker_id],
+        args=[tracker_id, True],
         id=f"tracker_{tracker_id}",
         next_run_time=next_run,
         replace_existing=True,
