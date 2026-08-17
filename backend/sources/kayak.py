@@ -312,6 +312,37 @@ _SELF_TRANSFER_MARKER = "Self-transfer hack"
 _SELF_TRANSFER_MAX_BLOCK_LINES = 60
 
 
+def _strip_blocks(lines: list[str], start_pred, end_pred, max_lines: int) -> list[str]:
+    """Remove each run of lines from a start_pred match up to (and including)
+    the next end_pred match within max_lines, dropping only the start line
+    when no terminator is found in range rather than guessing where the block
+    ends.
+
+    The shared skeleton behind _strip_self_transfer_rows,
+    _strip_nearby_airport_promos and _strip_placements (plan 027 #1) -- all
+    three are guards earned by separate production incidents (the €806
+    phantom, the VCP/ORY nearby-airport promos, the €702 self-transfer fare)
+    and keep their own docstrings and early-exit guards; only this identical
+    scan loop was shared. The end search always starts on the line AFTER the
+    start line, never on it -- a start line that also satisfies end_pred
+    (e.g. the placement disclosure line, which ends with its own "View Deal")
+    would otherwise terminate its own block immediately.
+    """
+    kept: list[str] = []
+    i = 0
+    while i < len(lines):
+        if start_pred(lines[i]):
+            end = i + 1
+            limit = min(len(lines), i + 1 + max_lines)
+            while end < limit and not end_pred(lines[end]):
+                end += 1
+            i = end + 1 if end < limit else i + 1
+            continue
+        kept.append(lines[i])
+        i += 1
+    return kept
+
+
 def _strip_self_transfer_rows(body_text: str) -> str:
     """Remove whole "Self-transfer hack" itinerary blocks.
 
@@ -322,24 +353,12 @@ def _strip_self_transfer_rows(body_text: str) -> str:
         return body_text
 
     lines = body_text.split("\n")
-    kept: list[str] = []
-    i = 0
-    while i < len(lines):
-        if _SELF_TRANSFER_MARKER in lines[i]:
-            end = i + 1
-            limit = min(len(lines), i + 1 + _SELF_TRANSFER_MAX_BLOCK_LINES)
-            while end < limit and lines[end].strip().lower() not in _RESULT_MARKERS_LOWER:
-                end += 1
-            if end < limit:
-                i = end + 1
-                continue
-            # No result marker within range: drop only the label line rather
-            # than guessing, exactly as the placement strips do.
-            i += 1
-            continue
-        kept.append(lines[i])
-        i += 1
-    return "\n".join(kept)
+    return "\n".join(_strip_blocks(
+        lines,
+        start_pred=lambda line: _SELF_TRANSFER_MARKER in line,
+        end_pred=lambda line: line.strip().lower() in _RESULT_MARKERS_LOWER,
+        max_lines=_SELF_TRANSFER_MAX_BLOCK_LINES,
+    ))
 
 
 def _is_placement_start(line: str) -> bool:
@@ -359,24 +378,12 @@ def _strip_nearby_airport_promos(body_text: str) -> str:
         return body_text
 
     lines = body_text.split("\n")
-    kept: list[str] = []
-    i = 0
-    while i < len(lines):
-        if any(m in lines[i] for m in _NEARBY_AIRPORT_START_MARKERS):
-            end = i + 1
-            limit = min(len(lines), i + 1 + _NEARBY_AIRPORT_MAX_BLOCK_LINES)
-            while end < limit and _NEARBY_AIRPORT_END_MARKER not in lines[end]:
-                end += 1
-            if end < limit:
-                i = end + 1
-                continue
-            # No terminator within the expected span: drop only the promo line
-            # itself rather than guessing where the block ends.
-            i += 1
-            continue
-        kept.append(lines[i])
-        i += 1
-    return "\n".join(kept)
+    return "\n".join(_strip_blocks(
+        lines,
+        start_pred=lambda line: any(m in line for m in _NEARBY_AIRPORT_START_MARKERS),
+        end_pred=lambda line: _NEARBY_AIRPORT_END_MARKER in line,
+        max_lines=_NEARBY_AIRPORT_MAX_BLOCK_LINES,
+    ))
 
 
 def _strip_placements(body_text: str) -> str:
@@ -395,19 +402,12 @@ def _strip_placements(body_text: str) -> str:
     if not any(_is_placement_start(line) for line in lines):
         return body_text
 
-    kept = []
-    i = 0
-    while i < len(lines):
-        if _is_placement_start(lines[i]):
-            end = i + 1
-            limit = min(len(lines), i + 1 + _PLACEMENT_MAX_BLOCK_LINES)
-            while end < limit and _PLACEMENT_END_MARKER not in lines[end]:
-                end += 1
-            i = end + 1 if end < limit else i + 1
-            continue
-        kept.append(lines[i])
-        i += 1
-    return "\n".join(kept)
+    return "\n".join(_strip_blocks(
+        lines,
+        start_pred=_is_placement_start,
+        end_pred=lambda line: _PLACEMENT_END_MARKER in line,
+        max_lines=_PLACEMENT_MAX_BLOCK_LINES,
+    ))
 
 
 def _results_section(body_text: str, max_results: int) -> str:
