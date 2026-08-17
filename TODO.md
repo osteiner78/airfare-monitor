@@ -343,6 +343,44 @@
     step (group by `flight_key`) is already separate from the "only if
     price matches" decision, so extending it later is a criteria change,
     not a rewrite.
+  - **Refactor prerequisites, sequenced as this phase's opening moves (plan
+    027, from the 026 refactor scan):**
+    - **Split `kayak.py`'s generic machinery from its page heuristics (026
+      #3)** before Skyscanner exists, not after: `backend/browser_render.py`
+      (worker contract + spawn seam), `backend/render_samples.py` (capture),
+      and a small config-contract module for `KayakRenderConfig`/timeouts,
+      so `kayak_render.py` stops importing `kayak.py`. Heuristics
+      (`_strip_*`, `_results_section`, `_page_currency`, `_*_grounded`) stay
+      in `kayak.py`. Riskiest part: `tests/test_kayak_timeout_budget.py`
+      reads `kayak_render.py`'s source text to pin timeout invariants, so
+      moving lines must update the test's target paths in the same change.
+    - **Extract `_build_detail_context` (026 #2)** as the opening move of
+      the expandable-row half of this work: the 315-line function performs
+      seven jobs (per-source blending, delta computation, missing-row
+      reconstruction, sticky-key/history merging, chart color assignment,
+      airline facet building, sparklines+freshness) and every detail-page
+      feature — including this one — flows through it. Extract the middle
+      chunk into module-level pure functions taking `(observations, rows,
+      tracker, top_n, sticky_keys)` and returning context fragments; keep
+      `_build_detail_context` a short orchestrator. No behavior change;
+      ordering between steps is the risk (e.g. history merge's
+      `_last_snapshot_for_key`).
+    - **Replace `last_error`/`last_error_level` with a typed `SearchOutcome`
+      (026 #9)** while building Skyscanner, since a new source is exactly
+      when the convention has to be re-learned — and last taught a lesson
+      via the `FallbackSource` silent-degradation bug. `search()` returns
+      `SearchOutcome(rows, error, level)` (or the protocol gains an
+      `outcome` property); every source and the scheduler update together.
+      Widest blast radius on the whole 026 scan (~10 test files assert
+      `last_error` directly) — do this deliberately, not as a drive-by.
+    - **A JS execution-based test harness** for the ~500 lines of
+      client-side logic in `filters.js`/`charts.js`, which currently have
+      zero execution tests despite holding three documented cross-file
+      invariants (palette identity, relative-time bucketing, colour-rank +
+      sticky-missing fallback) — build it as the opening move of the
+      expandable-row UI work, which will grow `filters.js` substantially
+      and is exactly the kind of change this gap makes risky to review. Not
+      built speculatively ahead of a consumer.
   - **Codeshare pairs are a second identity fork, same shape as the
     name-variant one Phase 4 fixed** (023's architectural finding, recorded
     2026-08-13). Two carriers selling seats on the *same physical flight*
@@ -425,6 +463,18 @@
   **Sequencing:** technique 1 is safe enough to do at any time and should
   happen before the table grows further. Technique 2 wants the identity and
   blending work to stay settled, so it should not land next to Passengers.
+
+  **Also bundle in: `db.py`'s ~20 copies of connection boilerplate (026
+  #10).** Every function opens `aiosqlite.connect(get_db_path())` and sets
+  `row_factory`, and *sometimes* `PRAGMA foreign_keys=ON` — inconsistently:
+  `create_tracker`/`delete_tracker`/`create_snapshot`/`insert_flight_prices`/
+  `create_notification`/`insert_notification_log` set it, `delete_notification`/
+  `list_notifications`/others don't. A module-level `_connect()` async context
+  manager (connection + row_factory + PRAGMA) would make every function a
+  3-line body. Mechanical, wide-but-safe diff — bundle it with this work
+  rather than doing it standalone, since any new db.py function this
+  normalisation adds (a side table for `legs_json`/`booking_url`, or the
+  run-length series) is the natural moment to establish the shared shape.
 
 ## Future (v2)
 - [ ] **City name autocomplete** — replace raw text inputs with city name search + autocomplete (e.g. type "Barcelona" → suggests BCN). Needs an airport/city dataset.
