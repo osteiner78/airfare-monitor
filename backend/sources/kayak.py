@@ -446,6 +446,23 @@ def _results_section(body_text: str, max_results: int) -> str:
     return "\n".join(lines[max(0, marker_lines[0] - lookback) : end + 1])
 
 
+def _build_extraction_user_message(body_text: str, top_n: int, depart_date: str) -> str:
+    """The user message sent to the extraction model.
+
+    Module-level and pure so scripts/kayak_model_benchmark.py can import it
+    rather than keep a byte-copy -- a benchmark that measured a different
+    prompt than production would measure the wrong thing (plan 027 #4).
+    """
+    return (
+        f"These flights depart on {depart_date}. Use that "
+        "date for departure_time, and for arrival_time unless the "
+        "itinerary arrives after midnight, which the page marks "
+        '"+1".\n\n'
+        f"Extract up to {top_n} flights from this Kayak "
+        f"results page text:\n\n{_results_section(body_text, top_n)}"
+    )
+
+
 def _derive_user_agent(default_ua: str) -> str:
     return default_ua.replace("HeadlessChrome", "Chrome")
 
@@ -789,12 +806,7 @@ class KayakSource:
                         # search date, so the date is stated rather than left
                         # to be inferred -- without it the model dates every
                         # row to the epoch.
-                        "content": f"These flights depart on {depart_date}. Use that "
-                        "date for departure_time, and for arrival_time unless the "
-                        "itinerary arrives after midnight, which the page marks "
-                        '"+1".\n\n'
-                        f"Extract up to {top_n} flights from this Kayak "
-                        f"results page text:\n\n{_results_section(body_text, top_n)}",
+                        "content": _build_extraction_user_message(body_text, top_n, depart_date),
                     },
                 ],
                 response_format={"type": "json_object"},

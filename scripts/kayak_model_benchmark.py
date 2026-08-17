@@ -39,7 +39,7 @@ from backend.sources.kayak import (  # noqa: E402
     _EXTRACTION_SYSTEM_PROMPT,
     _LLM_BASE_URL,
     KayakSource,
-    _results_section,
+    _build_extraction_user_message,
 )
 
 # The five bodies captured by the plan 019 Phase 3 live run (config_id
@@ -54,22 +54,6 @@ _DEFAULT_BODIES = (
     "20260805T183126.174312.txt",
 )
 _BODY_DEPART_DATE = "2026-10-04"
-
-
-def _user_message(body_text: str, top_n: int, depart_date: str) -> str:
-    """Must stay byte-identical to KayakSource._extract's user message --
-    plan 019 Phase 3b forbids touching the prompt, and a benchmark that
-    measured a different prompt than production would measure the wrong
-    thing. Duplicated rather than imported because _extract builds it inline
-    and this phase may not refactor kayak.py."""
-    return (
-        f"These flights depart on {depart_date}. Use that "
-        "date for departure_time, and for arrival_time unless the "
-        "itinerary arrives after midnight, which the page marks "
-        '"+1".\n\n'
-        f"Extract up to {top_n} flights from this Kayak "
-        f"results page text:\n\n{_results_section(body_text, top_n)}"
-    )
 
 
 def _client():
@@ -87,7 +71,7 @@ async def _call(client, model: str, body_text: str, top_n: int, timeout_s: float
                 model=model,
                 messages=[
                     {"role": "system", "content": _EXTRACTION_SYSTEM_PROMPT},
-                    {"role": "user", "content": _user_message(body_text, top_n, _BODY_DEPART_DATE)},
+                    {"role": "user", "content": _build_extraction_user_message(body_text, top_n, _BODY_DEPART_DATE)},
                 ],
                 response_format={"type": "json_object"},
                 extra_body={"thinking": {"type": "disabled"}},
@@ -113,24 +97,13 @@ async def _call(client, model: str, body_text: str, top_n: int, timeout_s: float
     }
 
 
-def _time_grounded(iso_time: str, body_text: str) -> bool:
-    """Is this extracted clock time actually printed on the page?
-
-    Not in the plan's 3b.3 list, which asks only that timestamps be
-    *canonical* -- but canonical is not correct. Kayak renders the cheapest
-    GRU-LIS itinerary as "12:30 am - 5:40 pm", and some candidates read that
-    departure as 12:30 (i.e. 12:30 pm). Both parse, both survive
-    _canonical_timestamp, both ground their price -- and they are two
-    different flight_keys for one physical flight, which is precisely the
-    defect plan 019 Phase 2 exists to prevent. So the time gets the same
-    treatment as the price: it must appear in the rendered text.
-    """
-    try:
-        parsed = datetime.fromisoformat(iso_time)
-    except (TypeError, ValueError):
-        return False
-    hour12 = parsed.hour % 12 or 12
-    return f"{hour12}:{parsed.minute:02d} {'am' if parsed.hour < 12 else 'pm'}" in body_text.lower()
+# Imported rather than kept as a local copy (plan 027 #4): the local version
+# scored an unparseable timestamp as ungrounded (production keeps it) and had
+# no 24-hour-page fallback (production falls back to the 24h form on a
+# pt-BR/de-CH force-redirect) -- a benchmark that scores differently than the
+# pipeline it's meant to model picks the wrong model, which is exactly what
+# picked mimo-v2.5 on 2026-08-15 under this drift.
+_time_grounded = KayakSource._time_grounded
 
 
 def _keys_time_grounded(flight_keys: list[str], body_text: str) -> bool:

@@ -1125,6 +1125,25 @@ async def test_extract_states_the_departure_date_in_the_prompt(monkeypatch):
     assert "2026-08-21" in captured["messages"][-1]["content"]
 
 
+def test_build_extraction_user_message_is_pinned():
+    """Characterization test (plan 027 #4): scripts/kayak_model_benchmark.py
+    imports this function rather than keeping a byte-copy, so its exact
+    output has to be pinned here -- the benchmark itself has no test
+    coverage, and a silent change to this string would make it measure a
+    different prompt than production sends."""
+    from backend.sources.kayak import _build_extraction_user_message
+
+    message = _build_extraction_user_message("some page text", 5, "2026-08-21")
+
+    assert message == (
+        'These flights depart on 2026-08-21. Use that date for departure_time, '
+        'and for arrival_time unless the itinerary arrives after midnight, '
+        'which the page marks "+1".\n\n'
+        'Extract up to 5 flights from this Kayak results page text:\n\n'
+        'some page text'
+    )
+
+
 # --- live search (requires network + Chromium + a real API key) ---
 
 @pytest.mark.slow
