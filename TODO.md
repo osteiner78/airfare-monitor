@@ -123,6 +123,32 @@
   - Same-carrier, same-clock-time pairs one day apart with departure hour
     `>= 3` (024's F6) — a night-rollover rebase (`_rebase_departure_date`,
     CLAUDE.md) misfiring outside its intended early-morning window.
+    **Must be scoped to a single `tracker_id`, and must compare DISTINCT
+    identities, not raw rows.** Both constraints were missing when this check
+    was first written and each makes it useless in a different way. Unscoped it
+    returned **279 hits on 2026-08-17, every one legitimate**: this project
+    tracks the same routes on consecutive departure dates (25/26/27 on Aug 20,
+    20/21/22 on Aug 21), and a daily flight genuinely has identical clock times
+    on both days. Joining raw `flight_prices` rows instead of distinct
+    identities returned **11,896,485** — a cartesian artifact, since one flight
+    appears in hundreds of snapshots. The correct form returns 0:
+
+    ```sql
+    WITH k AS (SELECT DISTINCT s.tracker_id, fp.airline, fp.departure_time,
+                      fp.arrival_time, fp.flight_key
+               FROM flight_prices fp JOIN snapshots s ON s.id = fp.snapshot_id)
+    SELECT count(*) FROM k a JOIN k b
+      ON a.tracker_id = b.tracker_id
+     AND a.airline = b.airline
+     AND time(a.departure_time) = time(b.departure_time)
+     AND time(a.arrival_time)   = time(b.arrival_time)
+     AND date(a.departure_time) = date(b.departure_time, '+1 day')
+     AND a.flight_key <> b.flight_key
+    WHERE CAST(strftime('%H', a.departure_time) AS INTEGER) >= 3;
+    ```
+
+    A standing check that reliably cries wolf is worse than no check, because
+    the next person learns to ignore it.
 
 ### Passengers (adults + children with ages)
 - [ ] **Track a party, not one adult.** Every tracker currently searches for a
