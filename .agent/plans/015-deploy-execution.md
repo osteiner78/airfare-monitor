@@ -12,7 +12,7 @@ does this).
 
 Topology (from user):
 - LXC LAN IP: `192.168.1.230`
-- WireGuard tunnel endpoint (existing VPS↔Proxmox): `10.0.0.1`
+- WireGuard tunnel (existing VPS↔Proxmox): `10.0.0.1` is the **VPS (garfield)** end; the Proxmox end is another `10.0.0.x` (label corrected 2026-09-22)
 - VPS external IP: `104.168.120.158`, runs Caddy as the public reverse proxy
 - LXC OS: **Debian 13 (trixie)**
 
@@ -162,7 +162,7 @@ Caddy on the VPS must reach `192.168.1.230:8100` across the tunnel. Easiest path
 **route the home LAN over WireGuard** so the VPS can hit the LXC's LAN IP:
 - On the **VPS** WG peer config, add the home subnet to `AllowedIPs`:
   `AllowedIPs = 10.0.0.0/24, 192.168.1.0/24`
-- On the **Proxmox host** (WG endpoint `10.0.0.1`), enable IP forwarding
+- On the **Proxmox host** (its own WG address, not `10.0.0.1`, which is the VPS), enable IP forwarding
   (`net.ipv4.ip_forward=1`) and ensure it routes/NATs to `192.168.1.0/24`.
 - Verify from the VPS: `curl -sf http://192.168.1.230:8100/ | head`.
 
